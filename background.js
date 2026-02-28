@@ -44,6 +44,7 @@ async function endSession() {
 
   const endTime = Date.now();
   const duration = Math.floor((endTime - currentSession.startTime) / 1000);
+
   const sessionData = {
     startTime: currentSession.startTime,
     endTime: endTime,
@@ -52,7 +53,7 @@ async function endSession() {
   };
 
   const dateKey = new Date(currentSession.startTime).toISOString().split('T')[0];
-  
+
   chrome.storage.local.get(['sessions'], (result) => {
     const sessions = result.sessions || {};
     if (!sessions[dateKey]) sessions[dateKey] = [];
@@ -69,26 +70,27 @@ async function endSession() {
 async function checkCurrentTab() {
   chrome.tabs.query({ active: true, lastFocusedWindow: true }, async (tabs) => {
     if (tabs.length === 0) {
-      endSession();
+      await endSession();
       return;
     }
+
     const tab = tabs[0];
     const whitelisted = await isWhitelisted(tab.url);
 
     if (whitelisted) {
-      endSession();
+      // Current page is whitelisted — end any active session
+      await endSession();
     } else {
       if (!currentSession) {
+        // No active session — start the 5s countdown
         attemptStartSession(tab.url);
       } else if (currentSession.url !== tab.url) {
-        // Different non-whitelisted URL - maybe restart timer? 
-        // For "soft timer", we might just keep the session if it's still non-whitelisted.
-        // The requirement says "starts when current page is NOT on whitelist".
-        // If we switch from one non-whitelisted to another, let's keep it simple: 
-        // continue session or start new one? 
-        // "Sessions are stored per-day and a report summarises active segments."
-        // Let's just track the fact it's an active segment.
+        // User navigated to a DIFFERENT non-whitelisted URL
+        // Save the current session and start a fresh one for the new URL
+        await endSession();
+        attemptStartSession(tab.url);
       }
+      // Same URL + active session → do nothing, keep counting
     }
   });
 }
@@ -115,14 +117,15 @@ chrome.idle.onStateChanged.addListener((state) => {
   }
 });
 
-// Manual stop
+// Message handler
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'stopSession') {
     endSession();
   } else if (message.action === 'getStatus') {
-    sendResponse({ 
-      active: !!currentSession, 
-      startTime: currentSession?.startTime 
+    sendResponse({
+      active: !!currentSession,
+      startTime: currentSession?.startTime,
+      url: currentSession?.url ?? null
     });
   }
 });
