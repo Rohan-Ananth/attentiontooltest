@@ -1,4 +1,4 @@
-"""Simple camera object with a Tkinter UI preview.
+"""Simple camera object with a Tkinter UI preview + face box overlay.
 
 Run:
     python3 camera_ui.py
@@ -9,11 +9,11 @@ Dependencies:
 
 from __future__ import annotations
 
+from pathlib import Path
 import tkinter as tk
 from tkinter import messagebox
 
 import cv2
-import PIL
 from PIL import Image, ImageTk
 
 
@@ -47,7 +47,7 @@ class Camera:
 
 
 class CameraUI:
-    """Tkinter UI for showing the live camera feed."""
+    """Tkinter UI for showing the live camera feed with face detection."""
 
     def __init__(self, camera: Camera) -> None:
         self.camera = camera
@@ -67,6 +67,17 @@ class CameraUI:
 
         self.stop_button = tk.Button(controls, text="Stop Camera", command=self.stop_camera, state="disabled")
         self.stop_button.pack(side="left", padx=(8, 0))
+
+        # Face detector (Haar cascade bundled with OpenCV)
+        cascade_path = Path(cv2.data.haarcascades) / "haarcascade_frontalface_default.xml"
+        self.face_cascade = cv2.CascadeClassifier(str(cascade_path))
+        if self.face_cascade.empty():
+            messagebox.showerror("Setup Error", f"Could not load face cascade at:\n{cascade_path}")
+            self.root.destroy()
+            return
+
+        # Remember last face box for brief detection dropouts
+        self.last_face: tuple[int, int, int, int] | None = None
 
         self.running = False
         self.face_cascade = cv2.CascadeClassifier(
@@ -145,7 +156,8 @@ class CameraUI:
         else:
             self.preview.config(text="No frame received from camera")
 
-        self.root.after(15, self.update_preview)
+        # ~30 FPS is usually plenty and reduces CPU vs 15ms
+        self.root.after(33, self.update_preview)
 
     def on_close(self) -> None:
         self.running = False
