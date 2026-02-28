@@ -9,6 +9,7 @@ Dependencies:
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import tkinter as tk
 from tkinter import messagebox
@@ -83,6 +84,26 @@ class CameraUI:
             length=180,
         )
         self.line_slider.pack(side="left")
+
+        self.running = False
+        self.face_cascade = self._load_cascade(["haarcascade_frontalface_default.xml"])
+        self.nose_cascade = self._load_cascade(["haarcascade_mcs_nose.xml", "haarcascade_nose.xml"])
+        self.detectors_ready = self.face_cascade is not None and self.nose_cascade is not None
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+
+    def _load_cascade(self, names: list[str]) -> cv2.CascadeClassifier | None:
+        """Load the first available Haar cascade from OpenCV's data directory."""
+        for name in names:
+            cascade_path = os.path.join(cv2.data.haarcascades, name)
+            if not os.path.exists(cascade_path):
+                continue
+
+            cascade = cv2.CascadeClassifier(cascade_path)
+            if not cascade.empty():
+                return cascade
+
+        return None
+
         # Face detector (Haar cascade bundled with OpenCV)
         cascade_path = Path(cv2.data.haarcascades) / "haarcascade_frontalface_default.xml"
         self.face_cascade = cv2.CascadeClassifier(str(cascade_path))
@@ -119,6 +140,9 @@ class CameraUI:
         face_roi = frame[y : y + h, x : x + w]
         gray_face = cv2.cvtColor(face_roi, cv2.COLOR_BGR2GRAY)
 
+        if self.nose_cascade is None:
+            return False
+
         noses = self.nose_cascade.detectMultiScale(gray_face, scaleFactor=1.12, minNeighbors=5)
         if len(noses) == 0:
             return False
@@ -151,6 +175,14 @@ class CameraUI:
         return avg_eye_center_y < h * 0.58
 
     def start_camera(self) -> None:
+        if not self.detectors_ready:
+            messagebox.showerror(
+                "Model Error",
+                "Required face/nose Haar cascades were not found. "
+                "Please install OpenCV data files that include nose detection.",
+            )
+            return
+
         if not self.camera.start():
             messagebox.showerror("Camera Error", "Could not open your camera.")
             return
@@ -174,6 +206,14 @@ class CameraUI:
         frame = self.camera.read_frame()
         if frame is not None:
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            faces: tuple[tuple[int, int, int, int], ...] | list[tuple[int, int, int, int]] = []
+            if self.face_cascade is not None:
+                faces = self.face_cascade.detectMultiScale(
+                    gray,
+                    scaleFactor=1.2,
+                    minNeighbors=5,
+                    minSize=(80, 80),
+                )
             faces = self.face_cascade.detectMultiScale(gray, scaleFactor=1.2, minNeighbors=5, minSize=(80, 80))
 
             if len(faces) > 0:
