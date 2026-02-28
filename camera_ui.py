@@ -1,211 +1,288 @@
-"""Simple Tkinter camera UI with optional face detection overlay.
-
-This module provides a small desktop app that previews webcam input,
-can optionally detect faces via OpenCV Haar cascades, and handles common
-runtime errors with user-friendly message boxes.
-"""
+"""Web camera tracking app with nose/face alerts and draggable horizontal band."""
 
 from __future__ import annotations
 
-import tkinter as tk
-from tkinter import messagebox
+import base64
+from dataclasses import dataclass
 
 import cv2
-from PIL import Image, ImageTk
+import numpy as np
+from flask import Flask, jsonify, request
 
 
-class CameraUI:
-    def __init__(self, root: tk.Tk) -> None:
-        self.root = root
-        self.root.title("Camera UI")
-        self.root.geometry("900x620")
+app = Flask(__name__)
 
-        self.video_label = tk.Label(self.root, bg="black")
-        self.video_label.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        controls = tk.Frame(self.root)
-        controls.pack(fill=tk.X, padx=10, pady=(0, 10))
+@dataclass
+class TrackingState:
+    tracked_face: tuple[int, int, int, int] | None = None
 
-        self.status_var = tk.StringVar(value="Camera stopped")
-        tk.Label(controls, textvariable=self.status_var, anchor="w").pack(side=tk.LEFT)
 
-        tk.Button(controls, text="Start", command=self.start_camera).pack(side=tk.RIGHT, padx=4)
-        tk.Button(controls, text="Stop", command=self.stop_camera).pack(side=tk.RIGHT, padx=4)
+STATE = TrackingState()
 
-        self.capture: cv2.VideoCapture | None = None
-        self.running = False
-        self.detect_faces = True
-        self.current_image = None
-        self.last_frame_shape: tuple[int, int] | None = None
-        self.tracked_face: tuple[int, int, int, int] | None = None
-        self.horizontal_bar_y = 240
-        self.horizontal_band_height = 50
-        self.dragging_bar = False
+FACE_CASCADE = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+PROFILE_CASCADE = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_profileface.xml")
+NOSE_CASCADE = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_mcs_nose.xml")
 
-        cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-        self.face_cascade = cv2.CascadeClassifier(cascade_path)
-        if self.face_cascade.empty():
-            self.face_cascade = None
-            messagebox.showwarning(
-                "Face detection unavailable",
-                "Could not load OpenCV Haar cascade. Camera preview will still work.",
-            )
+if FACE_CASCADE.empty():
+    raise RuntimeError("Could not load frontal face cascade")
+if PROFILE_CASCADE.empty():
+    PROFILE_CASCADE = None
+if NOSE_CASCADE.empty():
+    NOSE_CASCADE = None
 
-        profile_path = cv2.data.haarcascades + "haarcascade_profileface.xml"
-        self.profile_cascade = cv2.CascadeClassifier(profile_path)
-        if self.profile_cascade.empty():
-            self.profile_cascade = None
 
-        nose_path = cv2.data.haarcascades + "haarcascade_mcs_nose.xml"
-        self.nose_cascade = cv2.CascadeClassifier(nose_path)
-        if self.nose_cascade.empty():
-            self.nose_cascade = None
+INDEX_HTML = """
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Camera Tracking Web App</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #111; color: #eee; margin: 0; }
+    .wrap { max-width: 980px; margin: 20px auto; padding: 0 12px; }
+    .toolbar { margin-bottom: 10px; display: flex; gap: 8px; align-items: center; }
+    button { padding: 8px 12px; cursor: pointer; }
+    #status { font-weight: 600; }
+    .stage { position: relative; width: fit-content; border: 1px solid #333; background: #000; }
+    video, canvas { display: block; max-width: 100%; }
+    canvas { position: absolute; inset: 0; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="toolbar">
+      <button id="startBtn">Start Camera</button>
+      <button id="stopBtn">Stop Camera</button>
+      <span id="status">Camera stopped</span>
+    </div>
+    <div class="stage">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="overlay"></canvas>
+    </div>
+  </div>
 
-        self.video_label.bind("<Button-1>", self._on_drag_start)
-        self.video_label.bind("<B1-Motion>", self._on_drag_motion)
-        self.video_label.bind("<ButtonRelease-1>", self._on_drag_end)
+<script>
+const video = document.getElementById('video');
+const canvas = document.getElementById('overlay');
+const ctx = canvas.getContext('2d');
+const startBtn = document.getElementById('startBtn');
+const stopBtn = document.getElementById('stopBtn');
+const statusEl = document.getElementById('status');
 
-        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+let stream = null;
+let analyzeTimer = null;
+let draggingBand = false;
+let horizontalBandCenterY = 240;
+const horizontalBandHeight = 50;
+let latestTracking = null;
 
-    def start_camera(self) -> None:
-        if self.running:
-            return
+function drawOverlay() {
+  const w = canvas.width;
+  const h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
 
-        self.capture = cv2.VideoCapture(0)
-        if not self.capture.isOpened():
-            self.capture.release()
-            self.capture = None
-            messagebox.showerror(
-                "Camera Error",
-                "Could not open camera device 0. Make sure no other app is using the webcam.",
-            )
-            return
+  const bandHalf = Math.floor(horizontalBandHeight / 2);
+  const bandTop = Math.max(0, horizontalBandCenterY - bandHalf);
+  const bandBottom = Math.min(h - 1, horizontalBandCenterY + bandHalf);
 
-        self.running = True
-        self.status_var.set("Camera running")
-        self._update_frame()
+  ctx.strokeStyle = 'rgb(255,180,0)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(1, bandTop, w - 2, Math.max(1, bandBottom - bandTop));
 
-    def stop_camera(self) -> None:
-        self.running = False
-        if self.capture is not None:
-            self.capture.release()
-            self.capture = None
-        self.status_var.set("Camera stopped")
+  if (latestTracking && latestTracking.face) {
+    const color = latestTracking.tracking_bad ? 'rgb(220,30,30)' : 'rgb(30,220,30)';
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    const [x, y, fw, fh] = latestTracking.face;
+    ctx.strokeRect(x, y, fw, fh);
 
-    def _update_frame(self) -> None:
-        if not self.running or self.capture is None:
-            return
+    if (latestTracking.nose) {
+      const [nx, ny] = latestTracking.nose;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(nx, ny, 5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
 
-        ok, frame = self.capture.read()
-        if not ok:
-            self.stop_camera()
-            messagebox.showerror(
-                "Frame Error",
-                "Failed to read a frame from the camera.",
-            )
-            return
+  requestAnimationFrame(drawOverlay);
+}
 
-        frame = cv2.flip(frame, 1)
-        self.last_frame_shape = frame.shape[:2]
-        frame = self._draw_face_boxes(frame)
+function eventToVideoY(event) {
+  const rect = canvas.getBoundingClientRect();
+  const y = event.clientY - rect.top;
+  return Math.max(0, Math.min(canvas.height - 1, Math.round((y / rect.height) * canvas.height)));
+}
 
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        image = Image.fromarray(rgb)
-        self.current_image = ImageTk.PhotoImage(image=image)
-        self.video_label.configure(image=self.current_image)
+canvas.addEventListener('mousedown', (event) => {
+  const y = eventToVideoY(event);
+  if (Math.abs(y - horizontalBandCenterY) <= Math.floor(horizontalBandHeight / 2)) {
+    draggingBand = true;
+  }
+});
 
-        self.root.after(15, self._update_frame)
+window.addEventListener('mousemove', (event) => {
+  if (!draggingBand) return;
+  horizontalBandCenterY = eventToVideoY(event);
+});
 
-    def _draw_face_boxes(self, frame):
-        frame_h, frame_w = frame.shape[:2]
-        self.horizontal_bar_y = max(0, min(self.horizontal_bar_y, frame_h - 1))
+window.addEventListener('mouseup', () => { draggingBand = false; });
 
-        band_half = self.horizontal_band_height // 2
-        band_top = max(0, self.horizontal_bar_y - band_half)
-        band_bottom = min(frame_h - 1, self.horizontal_bar_y + band_half)
-        cv2.rectangle(frame, (0, band_top), (frame_w - 1, band_bottom), (255, 180, 0), 2)
+async function analyzeFrame() {
+  if (!stream) return;
 
-        if self.detect_faces and self.face_cascade is not None:
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            faces = self.face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5)
-            profile_faces = []
-            if self.profile_cascade is not None:
-                profile_faces = self.profile_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4)
+  const sendCanvas = document.createElement('canvas');
+  sendCanvas.width = video.videoWidth;
+  sendCanvas.height = video.videoHeight;
+  const sendCtx = sendCanvas.getContext('2d');
+  sendCtx.drawImage(video, 0, 0, sendCanvas.width, sendCanvas.height);
+  const dataUrl = sendCanvas.toDataURL('image/jpeg', 0.8);
 
-            nose_x: int | None = None
-            nose_y: int | None = None
-            turned_away = len(faces) == 0
+  try {
+    const resp = await fetch('/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        image_data: dataUrl,
+        horizontal_band_center_y: horizontalBandCenterY,
+        horizontal_band_height: horizontalBandHeight,
+      }),
+    });
 
-            if len(faces) > 0:
-                largest_face = max(faces, key=lambda box: box[2] * box[3])
-                x, y, w, h = map(int, largest_face)
-                self.tracked_face = (x, y, w, h)
+    const data = await resp.json();
+    latestTracking = data;
+    statusEl.textContent = data.status;
+  } catch (_err) {
+    statusEl.textContent = 'Tracking alert: analysis request failed';
+  }
+}
 
-                nose_roi = gray[y + h // 4 : y + h, x : x + w]
-                if self.nose_cascade is not None and nose_roi.size > 0:
-                    noses = self.nose_cascade.detectMultiScale(nose_roi, scaleFactor=1.1, minNeighbors=4)
-                    if len(noses) > 0:
-                        nx, ny, nw, nh = max(noses, key=lambda box: box[2] * box[3])
-                        nose_x = x + int(nx + nw / 2)
-                        nose_y = y + h // 4 + int(ny + nh / 2)
-                        cv2.circle(frame, (nose_x, nose_y), 6, (255, 255, 255), -1)
+startBtn.addEventListener('click', async () => {
+  if (stream) return;
+  stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+  video.srcObject = stream;
 
-                if nose_x is None:
-                    nose_x = x + w // 2
-                if nose_y is None:
-                    nose_y = y + h // 2
+  await new Promise((resolve) => {
+    video.onloadedmetadata = () => resolve();
+  });
 
-                nose_outside_band = nose_y < band_top or nose_y > band_bottom
-                tracking_bad = turned_away or nose_outside_band
-                box_color = (30, 255, 30) if not tracking_bad else (20, 20, 255)
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  if (horizontalBandCenterY >= canvas.height) {
+    horizontalBandCenterY = Math.floor(canvas.height / 2);
+  }
 
-                cv2.rectangle(frame, (x, y), (x + w, y + h), box_color, 2)
-                cv2.circle(frame, (nose_x, nose_y), 4, box_color, -1)
+  statusEl.textContent = 'Camera running';
+  analyzeTimer = setInterval(analyzeFrame, 120);
+});
 
-                if tracking_bad:
-                    self.status_var.set("Tracking alert: face turned away or nose outside horizontal rectangle")
-                else:
-                    self.status_var.set("Tracking good")
+stopBtn.addEventListener('click', () => {
+  if (!stream) return;
+  stream.getTracks().forEach((t) => t.stop());
+  stream = null;
+  if (analyzeTimer) {
+    clearInterval(analyzeTimer);
+    analyzeTimer = null;
+  }
+  latestTracking = null;
+  statusEl.textContent = 'Camera stopped';
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+});
 
-            elif self.tracked_face is not None:
-                x, y, w, h = self.tracked_face
-                cv2.rectangle(frame, (x, y), (x + w, y + h), (20, 20, 255), 2)
-                if len(profile_faces) > 0:
-                    self.status_var.set("Tracking alert: user turned away from camera")
-                else:
-                    self.status_var.set("Tracking alert: face not found")
+requestAnimationFrame(drawOverlay);
+</script>
+</body>
+</html>
+"""
 
-        return frame
 
-    def _on_drag_start(self, event: tk.Event) -> None:
-        if self.last_frame_shape is None:
-            return
-        y = self._event_y_to_frame_y(event)
-        if abs(y - self.horizontal_bar_y) <= self.horizontal_band_height // 2:
-            self.dragging_bar = True
+@app.get("/")
+def index() -> str:
+    return INDEX_HTML
 
-    def _on_drag_motion(self, event: tk.Event) -> None:
-        if not self.dragging_bar or self.last_frame_shape is None:
-            return
-        frame_h = self.last_frame_shape[0]
-        self.horizontal_bar_y = max(0, min(self._event_y_to_frame_y(event), frame_h - 1))
 
-    def _on_drag_end(self, _event: tk.Event) -> None:
-        self.dragging_bar = False
+@app.post("/analyze")
+def analyze():
+    payload = request.get_json(silent=True) or {}
+    image_data = payload.get("image_data", "")
+    band_center_y = int(payload.get("horizontal_band_center_y", 240))
+    band_height = max(1, int(payload.get("horizontal_band_height", 50)))
 
-    def _event_y_to_frame_y(self, event: tk.Event) -> int:
-        if self.last_frame_shape is None:
-            return 0
-        frame_h = self.last_frame_shape[0]
-        widget_h = max(self.video_label.winfo_height(), 1)
-        return int((event.y / widget_h) * frame_h)
+    if not image_data.startswith("data:image"):
+        return jsonify({"status": "Tracking alert: invalid frame payload", "tracking_bad": True}), 400
 
-    def on_close(self) -> None:
-        self.stop_camera()
-        self.root.destroy()
+    encoded = image_data.split(",", 1)[1]
+    frame_bytes = base64.b64decode(encoded)
+    image_array = cv2.imdecode(np.frombuffer(frame_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
+
+    if image_array is None:
+        return jsonify({"status": "Tracking alert: invalid frame data", "tracking_bad": True}), 400
+
+    frame = cv2.flip(image_array, 1)
+    frame_h = frame.shape[0]
+
+    band_center_y = max(0, min(frame_h - 1, band_center_y))
+    band_half = band_height // 2
+    band_top = max(0, band_center_y - band_half)
+    band_bottom = min(frame_h - 1, band_center_y + band_half)
+
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    faces = FACE_CASCADE.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5)
+    profile_faces = []
+    if PROFILE_CASCADE is not None:
+        profile_faces = PROFILE_CASCADE.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4)
+
+    result = {
+        "face": None,
+        "nose": None,
+        "tracking_bad": False,
+        "status": "Tracking good",
+    }
+
+    if len(faces) > 0:
+        x, y, w, h = map(int, max(faces, key=lambda box: box[2] * box[3]))
+        STATE.tracked_face = (x, y, w, h)
+
+        nose_x = x + w // 2
+        nose_y = y + h // 2
+        nose_found = False
+
+        nose_roi = gray[y + h // 4 : y + h, x : x + w]
+        if NOSE_CASCADE is not None and nose_roi.size > 0:
+            noses = NOSE_CASCADE.detectMultiScale(nose_roi, scaleFactor=1.1, minNeighbors=4)
+            if len(noses) > 0:
+                nx, ny, nw, nh = max(noses, key=lambda box: box[2] * box[3])
+                nose_x = x + int(nx + nw / 2)
+                nose_y = y + h // 4 + int(ny + nh / 2)
+                nose_found = True
+
+        nose_outside_band = nose_y < band_top or nose_y > band_bottom
+        turned_away = NOSE_CASCADE is not None and not nose_found
+        tracking_bad = turned_away or nose_outside_band
+
+        result["face"] = [x, y, w, h]
+        result["nose"] = [nose_x, nose_y]
+        result["tracking_bad"] = tracking_bad
+        if tracking_bad:
+            result["status"] = "Tracking alert: face turned away or nose outside horizontal rectangle"
+
+    elif STATE.tracked_face is not None:
+        x, y, w, h = STATE.tracked_face
+        result["face"] = [x, y, w, h]
+        result["tracking_bad"] = True
+        if len(profile_faces) > 0:
+            result["status"] = "Tracking alert: user turned away from camera"
+        else:
+            result["status"] = "Tracking alert: face not found"
+
+    else:
+        result["tracking_bad"] = True
+        result["status"] = "Tracking alert: face not found"
+
+    return jsonify(result)
 
 
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = CameraUI(root)
-    root.mainloop()
+    app.run(host="0.0.0.0", port=5000, debug=False)

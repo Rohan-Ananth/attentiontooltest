@@ -67,9 +67,9 @@ in the extension — so even physical distractions get tracked.
 - Chrome or any Chromium-based browser (Edge, Brave, Arc)
 - No npm, no build step — plain HTML/CSS/JS
 
-## Python Camera UI
+## Python Camera Web App
 
-A simple Python camera object + UI is included in `camera_ui.py`.
+A browser-based camera tracking web app is included in `camera_ui.py`.
 
 ### Run
 
@@ -77,10 +77,12 @@ A simple Python camera object + UI is included in `camera_ui.py`.
 python3 camera_ui.py
 ```
 
+Then open `http://localhost:5000` in your browser and click **Start Camera**.
+
 ### Install dependencies
 
 ```bash
-pip install opencv-python pillow
+pip install flask opencv-python numpy
 ```
 
-Use the **Start Camera** button to view the live feed and **Stop Camera** to release the camera.
+Use the draggable horizontal rectangle band to set the nose zone. If the nose leaves the band or the user turns away, the tracking box turns red.
