@@ -88,6 +88,46 @@ class CameraUI:
         self.running = False
         self.face_cascade = self._load_cascade(["haarcascade_frontalface_default.xml"])
         self.nose_cascade = self._load_cascade(["haarcascade_mcs_nose.xml", "haarcascade_nose.xml"])
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+
+    def _load_cascade(self, names: list[str]) -> cv2.CascadeClassifier | None:
+        """Load the first available Haar cascade from OpenCV's data directory."""
+        for name in names:
+            cascade_path = os.path.join(cv2.data.haarcascades, name)
+            if not os.path.exists(cascade_path):
+                continue
+
+            cascade = cv2.CascadeClassifier(cascade_path)
+            if not cascade.empty():
+                return cascade
+
+        return None
+
+    def _get_nose_center(
+        self, frame: cv2.typing.MatLike, face: tuple[int, int, int, int]
+    ) -> tuple[int, int]:
+        """Return nose center point; fallback to a stable face-based proxy when unavailable."""
+        x, y, w, h = face
+
+        if self.nose_cascade is not None:
+            face_roi = frame[y : y + h, x : x + w]
+            gray_face = cv2.cvtColor(face_roi, cv2.COLOR_BGR2GRAY)
+            noses = self.nose_cascade.detectMultiScale(gray_face, scaleFactor=1.12, minNeighbors=5)
+            if len(noses) > 0:
+                nx, ny, nw, nh = max(noses, key=lambda n: n[2] * n[3])
+                return x + nx + nw // 2, y + ny + nh // 2
+
+        # Fallback proxy: approximate nose location near face center/lower-middle.
+        return x + w // 2, y + int(h * 0.58)
+
+    def _is_user_attentive(
+        self, frame: cv2.typing.MatLike, face: tuple[int, int, int, int], line_y: int
+    ) -> bool:
+        """User is attentive when the tracked nose point stays above the configured line."""
+        nose_center_x, nose_center_y = self._get_nose_center(frame, face)
+        self.running = False
+        self.face_cascade = self._load_cascade(["haarcascade_frontalface_default.xml"])
+        self.nose_cascade = self._load_cascade(["haarcascade_mcs_nose.xml", "haarcascade_nose.xml"])
         self.detectors_ready = self.face_cascade is not None and self.nose_cascade is not None
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
@@ -155,6 +195,13 @@ class CameraUI:
 
         # If the nose breaks (crosses below) the line, the user is inattentive.
         return nose_center_y <= line_y
+
+    def start_camera(self) -> None:
+        if self.face_cascade is None:
+            messagebox.showerror(
+                "Model Error",
+                "Face Haar cascade was not found. "
+                "Please install OpenCV data files that include face detection.",
         nose_center_x = nx + nw / 2
         nose_center_y = ny + nh / 2
 
