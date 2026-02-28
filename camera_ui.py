@@ -83,17 +83,34 @@ class CameraUI:
         self.face_cascade = cv2.CascadeClassifier(
             cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
         )
+        self.nose_cascade = cv2.CascadeClassifier(
+            cv2.data.haarcascades + "haarcascade_mcs_nose.xml"
         self.eye_cascade = cv2.CascadeClassifier(
             cv2.data.haarcascades + "haarcascade_eye_tree_eyeglasses.xml"
         )
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
     def _is_user_attentive(self, frame: cv2.typing.MatLike, face: tuple[int, int, int, int]) -> bool:
+        """Check if nose placement suggests the user is facing the screen and not looking down."""
         """Check if eyes suggest the user is facing the screen and not looking down."""
         x, y, w, h = face
         face_roi = frame[y : y + h, x : x + w]
         gray_face = cv2.cvtColor(face_roi, cv2.COLOR_BGR2GRAY)
 
+        noses = self.nose_cascade.detectMultiScale(gray_face, scaleFactor=1.12, minNeighbors=5)
+        if len(noses) == 0:
+            return False
+
+        nx, ny, nw, nh = max(noses, key=lambda n: n[2] * n[3])
+        nose_center_x = nx + nw / 2
+        nose_center_y = ny + nh / 2
+
+        # A centered nose indicates the user is facing the screen.
+        facing_screen = w * 0.3 <= nose_center_x <= w * 0.7
+        # A lower nose position often indicates the user is looking down.
+        looking_down = nose_center_y > h * 0.68
+
+        return facing_screen and not looking_down
         eyes = self.eye_cascade.detectMultiScale(gray_face, scaleFactor=1.1, minNeighbors=6)
         if len(eyes) < 2:
             return False
