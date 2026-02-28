@@ -3,20 +3,37 @@ document.addEventListener('DOMContentLoaded', () => {
   const totalTimeEl = document.getElementById('totalTime');
   const stopBtn = document.getElementById('stopBtn');
 
-  function updateUI() {
-    chrome.runtime.sendMessage({ action: 'getStatus' }, (response) => {
-      if (response) {
-        statusEl.textContent = response.active ? 'Active' : 'Idle';
-        stopBtn.disabled = !response.active;
-      }
-    });
+  let activeStartTime = null;
 
+  function updateUI() {
     const today = new Date().toISOString().split('T')[0];
+
     chrome.storage.local.get(['sessions'], (result) => {
       const sessions = result.sessions || {};
       const todaySessions = sessions[today] || [];
-      const totalSeconds = todaySessions.reduce((acc, seg) => acc + (seg.duration || 0), 0);
-      totalTimeEl.textContent = formatDuration(totalSeconds);
+
+      // Sum all saved (completed) sessions for today
+      const savedSeconds = todaySessions.reduce((acc, seg) => acc + (seg.duration || 0), 0);
+
+      // Add the live (unsaved) current session time on top
+      const liveSeconds = activeStartTime
+        ? Math.floor((Date.now() - activeStartTime) / 1000)
+        : 0;
+
+      totalTimeEl.textContent = formatDuration(savedSeconds + liveSeconds);
+    });
+
+    chrome.runtime.sendMessage({ action: 'getStatus' }, (response) => {
+      if (chrome.runtime.lastError) return; // popup opened before background ready
+
+      if (response) {
+        const isActive = response.active;
+        statusEl.textContent = isActive ? 'Active' : 'Idle';
+        stopBtn.disabled = !isActive;
+
+        // Track live start time locally so the ticker works
+        activeStartTime = isActive ? response.startTime : null;
+      }
     });
   }
 
@@ -29,19 +46,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
   stopBtn.addEventListener('click', () => {
     chrome.runtime.sendMessage({ action: 'stopSession' }, () => {
+      activeStartTime = null;
       updateUI();
     });
   });
 
-  // Listen for updates from background
-  chrome.runtime.sendMessage({ action: 'getStatus' }, (response) => {
-  if (response?.active && response.startTime) {
-    const liveSeconds = Math.floor((Date.now() - response.startTime) / 1000);
-    totalTimeEl.textContent = formatDuration(totalSeconds + liveSeconds); // add live time
-  }
-});
+  // Listen for background status pushes (tab switches, idle, etc.)
+  chrome.runtime.onMessage.addListener((message) => {
+    if (message.action === 'statusUpdate') {
+      updateUI();
+    }
+  });
 
   updateUI();
-  // Update UI every second if active? Maybe just when opened is enough.
+
+  // Tick every second so the live timer counts up visually
   setInterval(updateUI, 1000);
 });
