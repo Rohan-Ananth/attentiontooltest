@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Study Calendar - Soft Timer",
+  "version": "1.0",
+  "description": "Tracks study/work sessions using a soft timer based on tab visibility and whitelist.",
+  "permissions": [
+    "tabs",
+    "storage",
+    "idle"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "options_page": "options.html"
+}
