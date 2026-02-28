@@ -204,6 +204,7 @@ class CameraUI:
                 "Model Error",
                 "Face Haar cascade was not found. "
                 "Please install OpenCV data files that include face detection.",
+            )
     def start_camera(self) -> None:
         if self.face_cascade is None:
             messagebox.showerror(
