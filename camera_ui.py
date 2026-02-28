@@ -210,6 +210,7 @@ class CameraUI:
                 "Model Error",
                 "Face Haar cascade was not found. "
                 "Please install OpenCV data files that include face detection.",
+            )
         nose_center_x = nx + nw / 2
         nose_center_y = ny + nh / 2
 
