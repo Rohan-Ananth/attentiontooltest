@@ -34,11 +34,12 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Listen for updates from background
-  chrome.runtime.onMessage.addListener((message) => {
-    if (message.action === 'statusUpdate') {
-      updateUI();
-    }
-  });
+  chrome.runtime.sendMessage({ action: 'getStatus' }, (response) => {
+  if (response?.active && response.startTime) {
+    const liveSeconds = Math.floor((Date.now() - response.startTime) / 1000);
+    totalTimeEl.textContent = formatDuration(totalSeconds + liveSeconds); // add live time
+  }
+});
 
   updateUI();
   // Update UI every second if active? Maybe just when opened is enough.
