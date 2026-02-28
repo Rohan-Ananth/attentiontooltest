@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Study Calendar - Soft Timer",
+  "version": "2.0",
+  "description": "Tracks study vs distraction time. Generates productivity reports at the end of each session.",
+  "permissions": [
+    "tabs",
+    "storage",
+    "idle"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "options_page": "options.html"
+}

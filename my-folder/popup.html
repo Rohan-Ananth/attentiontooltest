@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Study Calendar</title>
+  <style>
+    body {
+      width: 260px;
+      padding: 14px;
+      font-family: system-ui, sans-serif;
+      font-size: 13px;
+      color: #111;
+    }
+    h1 { font-size: 15px; margin: 0 0 12px; }
+
+    .status-row {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+
+    .stat { margin: 4px 0; }
+    .stat span { font-weight: 600; }
+
+    #doneBtn {
+      margin-top: 12px;
+      width: 100%;
+      padding: 8px;
+      background: #1d4ed8;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    #doneBtn:disabled { background: #93c5fd; cursor: default; }
+
+    #reportSection {
+      display: none;
+      margin-top: 12px;
+      border-top: 1px solid #e5e7eb;
+      padding-top: 10px;
+    }
+    #reportSection h2 { font-size: 13px; margin: 0 0 6px; }
+    #report {
+      white-space: pre-wrap;
+      font-size: 12px;
+      line-height: 1.6;
+      background: #f9fafb;
+      padding: 8px;
+      border-radius: 6px;
+    }
+  </style>
+</head>
+<body>
+  <h1>📅 Study Calendar</h1>
+
+  <div class="status-row" id="status">Checking…</div>
+
+  <div class="stat">📖 Study time today: <span id="studyTime">0s</span></div>
+  <div class="stat">📺 Off-task time: <span id="distractTime">0s</span></div>
+
+  <button id="doneBtn">✅ Done Studying — Get Report</button>
+
+  <div id="reportSection">
+    <h2>📊 Session Report</h2>
+    <pre id="report"></pre>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
