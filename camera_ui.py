@@ -59,6 +59,8 @@ class CameraUI:
         self.preview = tk.Label(self.root, text="Click Start Camera to begin preview")
         self.preview.pack(expand=True, fill="both", padx=12, pady=12)
 
+        self.line_position_percent = tk.IntVar(value=55)
+
         controls = tk.Frame(self.root)
         controls.pack(fill="x", padx=12, pady=(0, 12))
 
@@ -68,6 +70,19 @@ class CameraUI:
         self.stop_button = tk.Button(controls, text="Stop Camera", command=self.stop_camera, state="disabled")
         self.stop_button.pack(side="left", padx=(8, 0))
 
+        self.line_slider_label = tk.Label(controls, text="Attention line")
+        self.line_slider_label.pack(side="left", padx=(16, 6))
+
+        self.line_slider = tk.Scale(
+            controls,
+            from_=20,
+            to=85,
+            orient="horizontal",
+            showvalue=True,
+            variable=self.line_position_percent,
+            length=180,
+        )
+        self.line_slider.pack(side="left")
         # Face detector (Haar cascade bundled with OpenCV)
         cascade_path = Path(cv2.data.haarcascades) / "haarcascade_frontalface_default.xml"
         self.face_cascade = cv2.CascadeClassifier(str(cascade_path))
@@ -85,6 +100,13 @@ class CameraUI:
         )
         self.nose_cascade = cv2.CascadeClassifier(
             cv2.data.haarcascades + "haarcascade_mcs_nose.xml"
+        )
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+
+    def _is_user_attentive(
+        self, frame: cv2.typing.MatLike, face: tuple[int, int, int, int], line_y: int
+    ) -> bool:
+        """User is attentive when the detected nose stays above the configured line."""
         self.eye_cascade = cv2.CascadeClassifier(
             cv2.data.haarcascades + "haarcascade_eye_tree_eyeglasses.xml"
         )
@@ -102,6 +124,13 @@ class CameraUI:
             return False
 
         nx, ny, nw, nh = max(noses, key=lambda n: n[2] * n[3])
+        nose_center_x = x + nx + nw // 2
+        nose_center_y = y + ny + nh // 2
+
+        cv2.circle(frame, (nose_center_x, nose_center_y), 4, (255, 255, 0), -1)
+
+        # If the nose breaks (crosses below) the line, the user is inattentive.
+        return nose_center_y <= line_y
         nose_center_x = nx + nw / 2
         nose_center_y = ny + nh / 2
 
@@ -149,6 +178,8 @@ class CameraUI:
 
             if len(faces) > 0:
                 x, y, w, h = max(faces, key=lambda f: f[2] * f[3])
+                line_y = int(frame.shape[0] * (self.line_position_percent.get() / 100.0))
+                attentive = self._is_user_attentive(frame, (x, y, w, h), line_y)
                 attentive = self._is_user_attentive(frame, (x, y, w, h))
                 box_color = (0, 255, 0) if attentive else (0, 0, 255)
                 label = "Facing screen" if attentive else "Look at screen"
@@ -163,6 +194,9 @@ class CameraUI:
                     2,
                     cv2.LINE_AA,
                 )
+
+            line_y = int(frame.shape[0] * (self.line_position_percent.get() / 100.0))
+            cv2.line(frame, (0, line_y), (frame.shape[1], line_y), (255, 200, 0), 2)
 
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             image = Image.fromarray(rgb)
