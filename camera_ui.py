@@ -39,6 +39,7 @@ class CameraUI:
         self.last_frame_shape: tuple[int, int] | None = None
         self.tracked_face: tuple[int, int, int, int] | None = None
         self.horizontal_bar_y = 240
+        self.horizontal_band_height = 50
         self.dragging_bar = False
 
         cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
@@ -119,8 +120,10 @@ class CameraUI:
         frame_h, frame_w = frame.shape[:2]
         self.horizontal_bar_y = max(0, min(self.horizontal_bar_y, frame_h - 1))
 
-        cv2.line(frame, (0, self.horizontal_bar_y), (frame_w, self.horizontal_bar_y), (255, 180, 0), 2)
-
+        band_half = self.horizontal_band_height // 2
+        band_top = max(0, self.horizontal_bar_y - band_half)
+        band_bottom = min(frame_h - 1, self.horizontal_bar_y + band_half)
+        cv2.rectangle(frame, (0, band_top), (frame_w - 1, band_bottom), (255, 180, 0), 2)
 
         if self.detect_faces and self.face_cascade is not None:
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -152,15 +155,15 @@ class CameraUI:
                 if nose_y is None:
                     nose_y = y + h // 2
 
-                nose_breaks_bar = nose_y <= self.horizontal_bar_y
-                tracking_bad = turned_away or nose_breaks_bar
+                nose_outside_band = nose_y < band_top or nose_y > band_bottom
+                tracking_bad = turned_away or nose_outside_band
                 box_color = (30, 255, 30) if not tracking_bad else (20, 20, 255)
 
                 cv2.rectangle(frame, (x, y), (x + w, y + h), box_color, 2)
                 cv2.circle(frame, (nose_x, nose_y), 4, box_color, -1)
 
                 if tracking_bad:
-                    self.status_var.set("Tracking alert: face turned away or nose crossed horizontal bar")
+                    self.status_var.set("Tracking alert: face turned away or nose outside horizontal rectangle")
                 else:
                     self.status_var.set("Tracking good")
 
@@ -178,7 +181,7 @@ class CameraUI:
         if self.last_frame_shape is None:
             return
         y = self._event_y_to_frame_y(event)
-        if abs(y - self.horizontal_bar_y) <= 20:
+        if abs(y - self.horizontal_bar_y) <= self.horizontal_band_height // 2:
             self.dragging_bar = True
 
     def _on_drag_motion(self, event: tk.Event) -> None:
