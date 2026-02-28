@@ -88,6 +88,7 @@ class CameraUI:
         self.running = False
         self.face_cascade = self._load_cascade(["haarcascade_frontalface_default.xml"])
         self.nose_cascade = self._load_cascade(["haarcascade_mcs_nose.xml", "haarcascade_nose.xml"])
+        self.detectors_ready = self.face_cascade is not None
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
     def _load_cascade(self, names: list[str]) -> cv2.CascadeClassifier | None:
@@ -197,6 +198,13 @@ class CameraUI:
         return nose_center_y <= line_y
 
     def start_camera(self) -> None:
+        detectors_ready = getattr(self, "detectors_ready", self.face_cascade is not None)
+        if not detectors_ready:
+            messagebox.showerror(
+                "Model Error",
+                "Face Haar cascade was not found. "
+                "Please install OpenCV data files that include face detection.",
+    def start_camera(self) -> None:
         if self.face_cascade is None:
             messagebox.showerror(
                 "Model Error",
@@ -254,6 +262,7 @@ class CameraUI:
         if frame is not None:
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             faces: tuple[tuple[int, int, int, int], ...] | list[tuple[int, int, int, int]] = []
+            if self.detectors_ready and self.face_cascade is not None:
             if self.face_cascade is not None:
                 faces = self.face_cascade.detectMultiScale(
                     gray,
