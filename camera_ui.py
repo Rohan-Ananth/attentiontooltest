@@ -69,7 +69,34 @@ class CameraUI:
         self.stop_button.pack(side="left", padx=(8, 0))
 
         self.running = False
+        self.face_cascade = cv2.CascadeClassifier(
+            cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+        )
+        self.nose_cascade = cv2.CascadeClassifier(
+            cv2.data.haarcascades + "haarcascade_mcs_nose.xml"
+        )
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+
+    def _is_user_attentive(self, frame: cv2.typing.MatLike, face: tuple[int, int, int, int]) -> bool:
+        """Check if nose placement suggests the user is facing the screen and not looking down."""
+        x, y, w, h = face
+        face_roi = frame[y : y + h, x : x + w]
+        gray_face = cv2.cvtColor(face_roi, cv2.COLOR_BGR2GRAY)
+
+        noses = self.nose_cascade.detectMultiScale(gray_face, scaleFactor=1.12, minNeighbors=5)
+        if len(noses) == 0:
+            return False
+
+        nx, ny, nw, nh = max(noses, key=lambda n: n[2] * n[3])
+        nose_center_x = nx + nw / 2
+        nose_center_y = ny + nh / 2
+
+        # A centered nose indicates the user is facing the screen.
+        facing_screen = w * 0.3 <= nose_center_x <= w * 0.7
+        # A lower nose position often indicates the user is looking down.
+        looking_down = nose_center_y > h * 0.68
+
+        return facing_screen and not looking_down
 
     def start_camera(self) -> None:
         if not self.camera.start():
@@ -94,6 +121,26 @@ class CameraUI:
 
         frame = self.camera.read_frame()
         if frame is not None:
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            faces = self.face_cascade.detectMultiScale(gray, scaleFactor=1.2, minNeighbors=5, minSize=(80, 80))
+
+            if len(faces) > 0:
+                x, y, w, h = max(faces, key=lambda f: f[2] * f[3])
+                attentive = self._is_user_attentive(frame, (x, y, w, h))
+                box_color = (0, 255, 0) if attentive else (0, 0, 255)
+                label = "Facing screen" if attentive else "Look at screen"
+                cv2.rectangle(frame, (x, y), (x + w, y + h), box_color, 2)
+                cv2.putText(
+                    frame,
+                    label,
+                    (x, max(24, y - 8)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.7,
+                    box_color,
+                    2,
+                    cv2.LINE_AA,
+                )
+
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             image = Image.fromarray(rgb)
             photo = ImageTk.PhotoImage(image=image)
