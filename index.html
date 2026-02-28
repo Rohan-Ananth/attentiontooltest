@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Study Calendar — Soft Timer</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main>
+    <h1>Study Calendar — Soft Timer</h1>
+
+    <section class="controls">
+      <label>Whitelist hostnames (comma-separated):
+        <input id="whitelist" placeholder="example.com, docs.google.com" />
+      </label>
+
+      <label>Current page URL (for testing):
+        <input id="currentUrl" placeholder="https://example.com/article" />
+      </label>
+
+      <button id="applyConfig">Apply</button>
+      <button id="endSession">End Studying Session (report)</button>
+    </section>
+
+    <section class="status">
+      <div>Soft timer: <span id="timerState">stopped</span></div>
+      <div>Session length: <span id="sessionLength">0s</span></div>
+      <div>Last activity: <span id="lastActivity">never</span></div>
+    </section>
+
+    <section class="calendar">
+      <h2>Today's Sessions</h2>
+      <ul id="sessionsList"></ul>
+    </section>
+
+    <section class="report">
+      <h2>Report</h2>
+      <pre id="reportArea">No report yet.</pre>
+    </section>
+
+    <footer>
+      <small>Open this file in a browser to test. See README for details.</small>
+    </footer>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
