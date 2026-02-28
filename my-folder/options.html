@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Study Calendar</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:       #f5f3ef;
+      --surface:  #ffffff;
+      --ink:      #1a1814;
+      --ink-2:    #6b6760;
+      --ink-3:    #b0ada8;
+      --accent:   #2d6a4f;
+      --accent-2: #e8f5e2;
+      --warn:     #c0392b;
+      --warn-2:   #fdf0ee;
+      --border:   #e4e1db;
+      --mono:     'DM Mono', monospace;
+      --serif:    'DM Serif Display', Georgia, serif;
+      --sans:     'DM Sans', system-ui, sans-serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
+      font-size: 15px;
+      line-height: 1.6;
+    }
+
+    .page { max-width: 760px; margin: 0 auto; padding: 0 32px 80px; }
+
+    /* ── Hero ── */
+    .hero {
+      padding: 64px 0 48px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 56px;
+    }
+    .hero-eyebrow {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 16px;
+    }
+    .hero h1 {
+      font-family: var(--serif);
+      font-size: clamp(36px, 5vw, 52px);
+      line-height: 1.1;
+      letter-spacing: -0.01em;
+      color: var(--ink);
+      margin-bottom: 20px;
+    }
+    .hero h1 em { font-style: italic; color: var(--accent); }
+    .hero-desc {
+      font-size: 17px;
+      color: var(--ink-2);
+      max-width: 520px;
+      font-weight: 300;
+      line-height: 1.7;
+    }
+
+    /* ── Sections ── */
+    .section { margin-bottom: 56px; }
+    .section-label {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .section-label::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+    .section h2 {
+      font-family: var(--serif);
+      font-size: 26px;
+      font-weight: 400;
+      margin-bottom: 10px;
+      line-height: 1.2;
+    }
+    .section-body {
+      color: var(--ink-2);
+      font-weight: 300;
+      line-height: 1.75;
+      max-width: 600px;
+    }
+
+    /* ── Info cards ── */
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 2px;
+      margin-top: 28px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .info-card { background: var(--surface); padding: 28px 24px; }
+    .info-card-icon { font-size: 22px; margin-bottom: 12px; display: block; }
+    .info-card h3 {
+      font-family: var(--serif);
+      font-size: 17px;
+      font-weight: 400;
+      margin-bottom: 8px;
+    }
+    .info-card p { font-size: 13px; color: var(--ink-2); line-height: 1.65; font-weight: 300; }
+
+    /* ── Steps ── */
+    .steps { margin-top: 28px; }
+    .step {
+      display: grid;
+      grid-template-columns: 40px 1fr;
+      gap: 16px;
+      padding: 20px 0;
+      border-bottom: 1px solid var(--border);
+      align-items: start;
+    }
+    .step:last-child { border-bottom: none; }
+    .step-num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); padding-top: 2px; }
+    .step-title { font-weight: 500; font-size: 14px; margin-bottom: 4px; }
+    .step-desc { font-size: 13px; color: var(--ink-2); font-weight: 300; line-height: 1.6; }
+    .step-tag {
+      display: inline-block;
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      padding: 2px 8px;
+      border-radius: 20px;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+    .tag-study { background: var(--accent-2); color: var(--accent); }
+    .tag-dist  { background: var(--warn-2);   color: var(--warn); }
+
+    /* ── Whitelist form ── */
+    .whitelist-form {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-top: 20px;
+      margin-bottom: 16px;
+    }
+    .whitelist-form input {
+      flex: 1;
+      padding: 10px 14px;
+      font-family: var(--mono);
+      font-size: 13px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--ink);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .whitelist-form input:focus { border-color: var(--accent); }
+    .whitelist-form input::placeholder { color: var(--ink-3); }
+    .btn {
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-family: var(--sans);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: opacity 0.15s, transform 0.1s;
+      white-space: nowrap;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn-primary { background: var(--ink); color: #fff; }
+    .btn-primary:hover { opacity: 0.82; }
+
+    .whitelist-hint {
+      font-size: 12px;
+      color: var(--ink-3);
+      font-family: var(--mono);
+      margin-bottom: 16px;
+    }
+
+    #whitelistItems { display: flex; flex-direction: column; gap: 6px; }
+
+    .wl-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      animation: fadeIn 0.2s ease;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to   { opacity: 1; transform: none; }
+    }
+    .wl-domain { font-family: var(--mono); font-size: 13px; color: var(--accent); }
+    .wl-remove {
+      font-size: 12px;
+      color: var(--ink-3);
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-family: var(--sans);
+      padding: 3px 8px;
+      border-radius: 4px;
+      transition: color 0.15s, background 0.15s;
+    }
+    .wl-remove:hover { color: var(--warn); background: var(--warn-2); }
+
+    .wl-empty {
+      font-size: 13px;
+      color: var(--ink-3);
+      font-style: italic;
+      padding: 12px 0;
+    }
+
+    .feedback-pill {
+      font-size: 12px;
+      font-family: var(--mono);
+      padding: 4px 12px;
+      border-radius: 20px;
+      background: var(--accent-2);
+      color: var(--accent);
+      opacity: 0;
+      transition: opacity 0.2s;
+      pointer-events: none;
+    }
+    .feedback-pill.show { opacity: 1; }
+
+    /* ── History table ── */
+    .history-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+      font-size: 13px;
+    }
+    .history-table th {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+      font-weight: 400;
+      padding: 0 16px 12px 0;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    .history-table td {
+      padding: 14px 16px 14px 0;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    .history-table tr:last-child td { border-bottom: none; }
+    .date-cell { font-family: var(--mono); color: var(--ink-2); font-size: 12px; }
+    .dur-study  { color: var(--accent); font-family: var(--mono); }
+    .dur-dist   { color: var(--warn);   font-family: var(--mono); }
+
+    .pct-wrap { display: flex; align-items: center; gap: 10px; }
+    .pct-bar-bg {
+      width: 80px;
+      height: 5px;
+      background: var(--border);
+      border-radius: 99px;
+      overflow: hidden;
+    }
+    .pct-bar-fill { height: 100%; border-radius: 99px; }
+    .pct-label { font-family: var(--mono); font-size: 12px; min-width: 36px; }
+
+    .history-empty {
+      text-align: center;
+      padding: 40px 0;
+      color: var(--ink-3);
+      font-size: 13px;
+      font-style: italic;
+    }
+
+    /* ── Footer ── */
+    .footer {
+      margin-top: 64px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--ink-3);
+      letter-spacing: 0.06em;
+      display: flex;
+      justify-content: space-between;
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Hero -->
+  <header class="hero">
+    <p class="hero-eyebrow">Study Calendar — Soft Timer v2.0</p>
+    <h1>Know where your<br><em>time actually goes.</em></h1>
+    <p class="hero-desc">
+      A quiet extension that watches your tabs so you don't have to.
+      It separates focused study time from distraction time — and
+      at the end of every session, shows you the truth.
+    </p>
+  </header>
+
+  <!-- Why it matters -->
+  <section class="section">
+    <p class="section-label">Why it matters</p>
+    <h2>Most people overestimate how much they study.</h2>
+    <p class="section-body">
+      Research consistently shows people believe they work 2–3× more than they actually do.
+      Passive distractions — a quick video, a few minutes of scrolling — compound invisibly.
+      Without data, there's no way to improve.
+    </p>
+    <div class="info-grid">
+      <div class="info-card">
+        <span class="info-card-icon">🎯</span>
+        <h3>Honest tracking</h3>
+        <p>No manual timers to start or forget. Your tabs tell the story automatically.</p>
+      </div>
+      <div class="info-card">
+        <span class="info-card-icon">📊</span>
+        <h3>Real reports</h3>
+        <p>See your productivity %, top distracting sites, and personalised tips at session end.</p>
+      </div>
+      <div class="info-card">
+        <span class="info-card-icon">🔒</span>
+        <h3>Private by default</h3>
+        <p>Everything stays in your browser. No servers, no accounts, no data collection.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- How it works -->
+  <section class="section">
+    <p class="section-label">How it works</p>
+    <h2>Simple rules, running quietly.</h2>
+    <div class="steps">
+      <div class="step">
+        <span class="step-num">01</span>
+        <div>
+          <p class="step-title">You define your study spaces <span class="step-tag tag-study">study</span></p>
+          <p class="step-desc">Add your work sites below — Google Docs, Notion, your LMS. Time on these pages counts as focused work.</p>
+        </div>
+      </div>
+      <div class="step">
+        <span class="step-num">02</span>
+        <div>
+          <p class="step-title">The soft timer watches your tabs</p>
+          <p class="step-desc">Leave a study page and a 5-second grace period starts. Stay away and a distraction timer begins. Switch back and it stops immediately.</p>
+        </div>
+      </div>
+      <div class="step">
+        <span class="step-num">03</span>
+        <div>
+          <p class="step-title">Every distraction is logged <span class="step-tag tag-dist">distraction</span></p>
+          <p class="step-desc">YouTube, Reddit, social media — each off-task visit is recorded with its URL and exact duration.</p>
+        </div>
+      </div>
+      <div class="step">
+        <span class="step-num">04</span>
+        <div>
+          <p class="step-title">Idle time closes segments automatically</p>
+          <p class="step-desc">No activity for 60 seconds? The current segment closes. Screen locks and minimized windows are handled the same way.</p>
+        </div>
+      </div>
+      <div class="step">
+        <span class="step-num">05</span>
+        <div>
+          <p class="step-title">Click "Done Studying" for your report</p>
+          <p class="step-desc">The popup generates a full breakdown — total time, focus ratio, top distracting sites, and actionable recommendations.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Whitelist / Study Sanctum -->
+  <section class="section">
+    <p class="section-label">Study Sanctum</p>
+    <h2>Your protected study spaces.</h2>
+    <p class="section-body" style="margin-bottom: 20px;">
+      Add the domains you study on. Time spent here counts as focused work.
+      Use the base domain only — subpages are matched automatically.
+    </p>
+    <p class="whitelist-hint">e.g. docs.google.com · notion.so · canvas.instructure.com</p>
+    <div class="whitelist-form">
+      <input type="text" id="whitelistUrl" placeholder="docs.google.com" autocomplete="off" spellcheck="false" />
+      <button class="btn btn-primary" id="addWhitelist">Add</button>
+      <span class="feedback-pill" id="feedback"></span>
+    </div>
+    <div id="whitelistItems"></div>
+  </section>
+
+  <!-- History -->
+  <section class="section">
+    <p class="section-label">Session history</p>
+    <h2>Your focus, over time.</h2>
+    <table class="history-table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Study</th>
+          <th>Off-task</th>
+          <th>Focus</th>
+          <th>Segments</th>
+        </tr>
+      </thead>
+      <tbody id="reportContent"></tbody>
+    </table>
+  </section>
+
+  <footer class="footer">
+    <span>Study Calendar — Soft Timer</span>
+    <span>All data stored locally in your browser</span>
+  </footer>
+
+</div>
+<script src="options.js"></script>
+</body>
+</html>
