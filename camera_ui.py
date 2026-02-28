@@ -1,4 +1,4 @@
-"""Simple camera object with a Tkinter UI preview.
+"""Simple camera object with a Tkinter UI preview + face box overlay.
 
 Run:
     python3 camera_ui.py
@@ -9,11 +9,11 @@ Dependencies:
 
 from __future__ import annotations
 
+from pathlib import Path
 import tkinter as tk
 from tkinter import messagebox
 
 import cv2
-import PIL
 from PIL import Image, ImageTk
 
 
@@ -47,7 +47,7 @@ class Camera:
 
 
 class CameraUI:
-    """Tkinter UI for showing the live camera feed."""
+    """Tkinter UI for showing the live camera feed with face detection."""
 
     def __init__(self, camera: Camera) -> None:
         self.camera = camera
@@ -68,17 +68,31 @@ class CameraUI:
         self.stop_button = tk.Button(controls, text="Stop Camera", command=self.stop_camera, state="disabled")
         self.stop_button.pack(side="left", padx=(8, 0))
 
+        # Face detector (Haar cascade bundled with OpenCV)
+        cascade_path = Path(cv2.data.haarcascades) / "haarcascade_frontalface_default.xml"
+        self.face_cascade = cv2.CascadeClassifier(str(cascade_path))
+        if self.face_cascade.empty():
+            messagebox.showerror("Setup Error", f"Could not load face cascade at:\n{cascade_path}")
+            self.root.destroy()
+            return
+
+        # Remember last face box for brief detection dropouts
+        self.last_face: tuple[int, int, int, int] | None = None
+
         self.running = False
         self.face_cascade = cv2.CascadeClassifier(
             cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
         )
         self.nose_cascade = cv2.CascadeClassifier(
             cv2.data.haarcascades + "haarcascade_mcs_nose.xml"
+        self.eye_cascade = cv2.CascadeClassifier(
+            cv2.data.haarcascades + "haarcascade_eye_tree_eyeglasses.xml"
         )
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
     def _is_user_attentive(self, frame: cv2.typing.MatLike, face: tuple[int, int, int, int]) -> bool:
         """Check if nose placement suggests the user is facing the screen and not looking down."""
+        """Check if eyes suggest the user is facing the screen and not looking down."""
         x, y, w, h = face
         face_roi = frame[y : y + h, x : x + w]
         gray_face = cv2.cvtColor(face_roi, cv2.COLOR_BGR2GRAY)
@@ -97,6 +111,15 @@ class CameraUI:
         looking_down = nose_center_y > h * 0.68
 
         return facing_screen and not looking_down
+        eyes = self.eye_cascade.detectMultiScale(gray_face, scaleFactor=1.1, minNeighbors=6)
+        if len(eyes) < 2:
+            return False
+
+        eye_centers_y = sorted(ey + eh / 2 for (_, ey, _, eh) in eyes[:2])
+        avg_eye_center_y = sum(eye_centers_y) / len(eye_centers_y)
+
+        # Eyes significantly lower than the top half of the face often means looking down.
+        return avg_eye_center_y < h * 0.58
 
     def start_camera(self) -> None:
         if not self.camera.start():
@@ -150,7 +173,8 @@ class CameraUI:
         else:
             self.preview.config(text="No frame received from camera")
 
-        self.root.after(15, self.update_preview)
+        # ~30 FPS is usually plenty and reduces CPU vs 15ms
+        self.root.after(33, self.update_preview)
 
     def on_close(self) -> None:
         self.running = False
