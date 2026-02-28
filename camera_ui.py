@@ -13,6 +13,7 @@ import tkinter as tk
 from tkinter import messagebox
 
 import cv2
+import PIL
 from PIL import Image, ImageTk
 
 
