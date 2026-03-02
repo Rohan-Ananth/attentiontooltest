@@ -20,7 +20,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ── Options link ─────────────────────────────────────────────────────────────
   optionsLink.addEventListener('click', () => {
-    chrome.runtime.openOptionsPage();
+    const optionsUrl = chrome.runtime.getURL('options.html');
+    try {
+      const result = chrome.runtime.openOptionsPage();
+      // MV3 returns a promise — catch failures (e.g. standalone window context)
+      if (result && result.catch) {
+        result.catch(() => window.open(optionsUrl, '_blank'));
+      }
+    } catch {
+      window.open(optionsUrl, '_blank');
+    }
   });
 
   // ── Status UI helper ─────────────────────────────────────────────────────────
