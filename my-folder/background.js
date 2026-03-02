@@ -1,8 +1,17 @@
-let currentSession = null;      // active distraction or study segment
-let studyDayStart  = null;       // when the user started studying today
+let currentSession = null;
+let studyDayStart  = null;
 let startTimer     = null;
-const START_DELAY    = 5000;
-const IDLE_THRESHOLD = 60;
+
+// Defaults — overridden by values saved in storage
+let START_DELAY    = 5000;  // ms  (grace period before distraction counts)
+let IDLE_THRESHOLD = 60;    // seconds
+
+// Load saved settings on startup
+chrome.storage.local.get(['graceperiod', 'idleThreshold'], (result) => {
+  if (result.graceperiod)   START_DELAY    = result.graceperiod * 1000;
+  if (result.idleThreshold) IDLE_THRESHOLD = result.idleThreshold;
+  chrome.idle.setDetectionInterval(IDLE_THRESHOLD);
+});
 
 // ─── Whitelist helpers ────────────────────────────────────────────────────────
 
@@ -46,7 +55,7 @@ async function endSegment() {
     startTime: currentSession.startTime,
     endTime,
     duration,
-    url:       currentSession.url
+    url: currentSession.url
   };
 
   const dateKey = new Date(currentSession.startTime).toISOString().split('T')[0];
@@ -134,20 +143,17 @@ async function generateReport() {
         totalStudy,
         totalDistraction,
         productivityPct,
-        studySegments:      studySegs,
+        studySegments:       studySegs,
         distractionSegments: distractionSegs,
         distractionByDomain: byDomain,
-        recommendations:    buildRecommendations(productivityPct, byDomain, totalDistraction)
+        recommendations:     buildRecommendations(productivityPct, byDomain, totalDistraction)
       };
 
       studyDayStart = null;
 
-      // ── KEY FIX: store report in chrome.storage so popup can read it ──────
-      // MV3 service workers don't reliably keep message channels open for async
-      // sendResponse. Storing in storage sidesteps that entirely.
-      chrome.storage.local.set({ lastReport: report }, () => {
-        resolve(report);
-      });
+      // Store report in chrome.storage so popup can read it
+      // (MV3 service workers can't reliably send async message responses)
+      chrome.storage.local.set({ lastReport: report }, () => resolve(report));
     });
   });
 }
@@ -174,7 +180,6 @@ function buildRecommendations(pct, byDomain, totalDistraction) {
   if (topDomain && topDomain[1] > 60) {
     tips.push(`Your biggest distraction was ${topDomain[0]} (${formatDuration(topDomain[1])}). Try scheduling it as a reward after studying.`);
   }
-
   if (totalDistraction > 3600) {
     tips.push('You spent over an hour off-task. Try setting a visible countdown timer to stay accountable.');
   }
@@ -193,25 +198,31 @@ function formatDuration(seconds) {
 // ─── Message handler ──────────────────────────────────────────────────────────
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+
   if (message.action === 'stopSession') {
     endSegment();
 
   } else if (message.action === 'getStatus') {
     sendResponse({
-      active:        !!currentSession,
-      type:          currentSession?.type      ?? null,
-      startTime:     currentSession?.startTime ?? null,
-      url:           currentSession?.url       ?? null,
+      active:    !!currentSession,
+      type:      currentSession?.type      ?? null,
+      startTime: currentSession?.startTime ?? null,
+      url:       currentSession?.url       ?? null,
       studyDayStart
     });
 
   } else if (message.action === 'endStudyDay') {
-    // Generate and STORE the report, then ack.
-    // Popup polls chrome.storage for 'lastReport' rather than waiting on this response.
-    generateReport().then(() => {
-      sendResponse({ ok: true });
-    });
-    return true; // keep channel open just long enough for the ack
+    generateReport().then(() => sendResponse({ ok: true }));
+    return true;
+
+  } else if (message.action === 'updateSettings') {
+    // Apply new grace period and idle threshold immediately
+    if (message.graceperiod)   START_DELAY    = message.graceperiod * 1000;
+    if (message.idleThreshold) {
+      IDLE_THRESHOLD = message.idleThreshold;
+      chrome.idle.setDetectionInterval(IDLE_THRESHOLD);
+    }
+    sendResponse({ ok: true });
 
   } else if (message.action === 'clearDay') {
     const dateKey = new Date().toISOString().split('T')[0];
