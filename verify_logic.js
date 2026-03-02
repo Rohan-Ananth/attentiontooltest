@@ -55,8 +55,8 @@ async function testSessionTiming() {
   
   chromeMock.storage.local.data.whitelist = ['google.com'];
 
-  // Call the function in the VM
-  vm.runInContext("attemptStartSession('study.com')", sandbox);
+  // Call the function in the VM — study.com is NOT whitelisted, so type is 'distraction'
+  vm.runInContext("attemptStartSegment('study.com', 'distraction')", sandbox);
   
   // Wait 6 seconds (START_DELAY is 5s)
   await new Promise(r => setTimeout(r, 6000));
@@ -64,31 +64,31 @@ async function testSessionTiming() {
   // Check sandbox state
   const currentSession = vm.runInContext('currentSession', sandbox);
   if (currentSession && currentSession.url === 'study.com') {
-    console.log('✅ Session started correctly after 5s');
+    console.log('✅ Segment started correctly after 5s');
   } else {
-    console.error('❌ Session failed to start after 5s');
+    console.error('❌ Segment failed to start after 5s');
     console.log('currentSession from VM:', currentSession);
     process.exit(1);
   }
 
-  // End session
-  vm.runInContext('endSession()', sandbox);
+  // End segment
+  vm.runInContext('endSegment()', sandbox);
   await new Promise(r => setTimeout(r, 500));
   
   const currentSessionAfter = vm.runInContext('currentSession', sandbox);
   if (!currentSessionAfter) {
-    console.log('✅ Session ended correctly');
+    console.log('✅ Segment ended correctly');
   } else {
-    console.error('❌ Session failed to end');
+    console.error('❌ Segment failed to end');
     process.exit(1);
   }
 
-  const sessions = chromeMock.storage.local.data.sessions;
+  const segments = chromeMock.storage.local.data.segments;
   const dateKey = new Date().toISOString().split('T')[0];
-  if (sessions && sessions[dateKey] && sessions[dateKey].length > 0) {
-    console.log('✅ Session saved to storage correctly');
+  if (segments && segments[dateKey] && segments[dateKey].length > 0) {
+    console.log('✅ Segment saved to storage correctly');
   } else {
-    console.error('❌ Session not found in storage');
+    console.error('❌ Segment not found in storage');
     process.exit(1);
   }
 }
@@ -98,17 +98,25 @@ async function testWhitelist() {
   vm.runInContext('currentSession = null', sandbox);
   
   chromeMock.storage.local.data.whitelist = ['google.com'];
-  vm.runInContext("attemptStartSession('google.com')", sandbox);
+  // google.com IS whitelisted — type is 'study', which has 0ms delay
+  vm.runInContext("attemptStartSegment('google.com', 'study')", sandbox);
   
-  await new Promise(r => setTimeout(r, 6000));
+  await new Promise(r => setTimeout(r, 1000));
   
   const currentSession = vm.runInContext('currentSession', sandbox);
-  if (!currentSession) {
-    console.log('✅ Whitelisted URL did not start a session');
+  if (currentSession && currentSession.type === 'study') {
+    console.log('✅ Whitelisted URL started a study segment (not distraction)');
+  } else if (!currentSession) {
+    console.error('❌ Whitelisted URL did not start any segment');
+    process.exit(1);
   } else {
-    console.error('❌ Whitelisted URL started a session');
+    console.error('❌ Whitelisted URL started wrong segment type:', currentSession.type);
     process.exit(1);
   }
+
+  // Clean up
+  vm.runInContext('endSegment()', sandbox);
+  await new Promise(r => setTimeout(r, 500));
 }
 
 async function runTests() {
