@@ -1,17 +1,70 @@
 let currentSession = null;
 let studyDayStart  = null;
 let startTimer     = null;
+let pendingStart   = null;  // { url, type, scheduledAt } — persisted so grace period survives restart
 
 // Defaults — overridden by values saved in storage
 let START_DELAY    = 5000;  // ms  (grace period before distraction counts)
 let IDLE_THRESHOLD = 60;    // seconds
 
-// Load saved settings on startup
-chrome.storage.local.get(['graceperiod', 'idleThreshold'], (result) => {
+// ─── Persistence helpers ─────────────────────────────────────────────────────
+
+const STATE_KEY = '_liveState';
+
+async function persistState() {
+  const state = {
+    currentSession,
+    studyDayStart,
+    pendingStart
+  };
+  await chrome.storage.local.set({ [STATE_KEY]: state });
+}
+
+async function restoreState() {
+  const result = await chrome.storage.local.get([STATE_KEY, 'graceperiod', 'idleThreshold']);
+
+  // Restore settings
   if (result.graceperiod)   START_DELAY    = result.graceperiod * 1000;
   if (result.idleThreshold) IDLE_THRESHOLD = result.idleThreshold;
   chrome.idle.setDetectionInterval(IDLE_THRESHOLD);
-});
+
+  // Restore live state
+  const saved = result[STATE_KEY];
+  if (!saved) return;
+
+  studyDayStart  = saved.studyDayStart  || null;
+  currentSession = saved.currentSession || null;
+
+  // If there was a pending grace-period start, check if the delay has elapsed
+  if (saved.pendingStart) {
+    const elapsed = Date.now() - saved.pendingStart.scheduledAt;
+    const remaining = START_DELAY - elapsed;
+
+    if (remaining <= 0) {
+      // Grace period already passed while we were asleep — start the segment now
+      if (!currentSession) {
+        startSegment(saved.pendingStart.url, saved.pendingStart.type);
+      }
+    } else {
+      // Still waiting — reschedule the remainder
+      pendingStart = saved.pendingStart;
+      startTimer = setTimeout(() => {
+        if (!currentSession) startSegment(pendingStart.url, pendingStart.type);
+        pendingStart = null;
+        persistState();
+      }, remaining);
+    }
+  }
+
+  console.log('Service worker restored state:', {
+    hasSession: !!currentSession,
+    studyDayStart,
+    hadPending: !!saved.pendingStart
+  });
+}
+
+// Restore immediately on startup
+restoreState();
 
 // ─── Whitelist helpers ────────────────────────────────────────────────────────
 
@@ -30,8 +83,21 @@ async function isWhitelisted(url) {
 function attemptStartSegment(url, type) {
   clearTimeout(startTimer);
   const delay = type === 'distraction' ? START_DELAY : 0;
+
+  if (delay === 0) {
+    pendingStart = null;
+    if (!currentSession) startSegment(url, type);
+    return;
+  }
+
+  // Persist when the grace period started so we can resume after restart
+  pendingStart = { url, type, scheduledAt: Date.now() };
+  persistState();
+
   startTimer = setTimeout(() => {
     if (!currentSession) startSegment(url, type);
+    pendingStart = null;
+    persistState();
   }, delay);
 }
 
@@ -40,13 +106,16 @@ function startSegment(url, type) {
   if (!studyDayStart) studyDayStart = Date.now();
 
   currentSession = { type, url, startTime: Date.now() };
+  pendingStart   = null;
+  persistState();
   console.log(`Segment started [${type}]:`, url);
   chrome.runtime.sendMessage({ action: 'statusUpdate', status: type }).catch(() => {});
 }
 
 async function endSegment() {
   clearTimeout(startTimer);
-  if (!currentSession) return;
+  pendingStart = null;
+  if (!currentSession) { await persistState(); return; }
 
   const endTime  = Date.now();
   const duration = Math.floor((endTime - currentSession.startTime) / 1000);
@@ -71,6 +140,7 @@ async function endSegment() {
 
   console.log('Segment saved:', segment);
   currentSession = null;
+  await persistState();
   chrome.runtime.sendMessage({ action: 'statusUpdate', status: 'idle' }).catch(() => {});
 }
 
@@ -150,6 +220,7 @@ async function generateReport() {
       };
 
       studyDayStart = null;
+      persistState();
 
       // Store report in chrome.storage so popup can read it
       // (MV3 service workers can't reliably send async message responses)
@@ -232,5 +303,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       chrome.storage.local.set({ segments });
     });
     studyDayStart = null;
+    persistState();
   }
 });
