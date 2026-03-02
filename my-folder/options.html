@@ -507,6 +507,11 @@
   <nav class="topbar">
     <span class="topbar-brand">Study Calendar</span>
     <div class="topbar-right">
+      <span id="authStatus" style="font-family:'DM Mono',monospace;font-size:11px;color:var(--ink-3);display:none">
+        <span id="authUser"></span>
+        <button id="signOutBtn" class="btn-ghost" style="font-size:11px;padding:4px 10px;margin-left:6px;border:1px solid var(--border);border-radius:6px;cursor:pointer;background:none;color:var(--ink-3);font-family:'DM Mono',monospace">Sign out</button>
+      </span>
+      <a id="signInLink" href="#" style="font-family:'DM Mono',monospace;font-size:11px;color:var(--accent);text-decoration:none;display:none">Sign in →</a>
       <button class="btn-timer" id="openTimerBtn">⏱ Open Timer</button>
       <span class="theme-label" id="themeLabel">Light</span>
       <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme"></button>
@@ -714,6 +719,7 @@
     </footer>
 
   </div>
+  <script src="auth.js"></script>
   <script src="options.js"></script>
 </body>
 </html>
