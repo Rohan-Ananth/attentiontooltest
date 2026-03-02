@@ -98,7 +98,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Opens popup.html as a small standalone window
   openTimerBtn.addEventListener('click', () => {
     const url = chrome.runtime.getURL('popup.html');
-    window.open(url, 'study-timer', 'width=310,height=520,resizable=no');
+    window.open(url, 'study-timer', 'width=700,height=600');
   });
 
   // ── Whitelist ───────────────────────────────────────────────────────────────
