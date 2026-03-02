@@ -1,106 +1,160 @@
 document.addEventListener('DOMContentLoaded', () => {
-  const statusEl      = document.getElementById('status');
-  const studyTimeEl   = document.getElementById('studyTime');
+  const statusPill     = document.getElementById('statusPill');
+  const statusDot      = document.getElementById('statusDot');
+  const statusText     = document.getElementById('statusText');
+  const studyTimeEl    = document.getElementById('studyTime');
   const distractTimeEl = document.getElementById('distractTime');
-  const doneBtn       = document.getElementById('doneBtn');
-  const reportSection = document.getElementById('reportSection');
-  const reportEl      = document.getElementById('report');
+  const doneBtn        = document.getElementById('doneBtn');
+  const reportSection  = document.getElementById('reportSection');
+  const pctHero        = document.getElementById('pctHero');
+  const pctSub         = document.getElementById('pctSub');
+  const reportRows     = document.getElementById('reportRows');
+  const distractionList  = document.getElementById('distractionList');
+  const distractionItems = document.getElementById('distractionItems');
+  const tipsList       = document.getElementById('tipsList');
+  const tipsItems      = document.getElementById('tipsItems');
+  const optionsLink    = document.getElementById('optionsLink');
 
   let activeStartTime = null;
-  let activeType = null;
+  let activeType      = null;
 
-  // ─── Live ticker ───────────────────────────────────────────────────────────
+  // ── Options link ─────────────────────────────────────────────────────────────
+  optionsLink.addEventListener('click', () => {
+    chrome.runtime.openOptionsPage();
+  });
 
+  // ── Status UI helper ─────────────────────────────────────────────────────────
+  function setStatus(type) {
+    statusPill.className = 'status-pill';
+    statusDot.className  = 'status-dot';
+
+    if (type === 'study') {
+      statusPill.classList.add('studying');
+      statusDot.classList.add('pulse');
+      statusText.textContent = 'Studying';
+    } else if (type === 'distraction') {
+      statusPill.classList.add('distracted');
+      statusDot.classList.add('pulse');
+      statusText.textContent = 'Off-task';
+    } else {
+      statusPill.classList.add('idle');
+      statusText.textContent = 'Idle';
+    }
+  }
+
+  // ── Live ticker ───────────────────────────────────────────────────────────────
   function updateUI() {
     const today = new Date().toISOString().split('T')[0];
 
     chrome.storage.local.get(['segments'], (result) => {
       const segments = ((result.segments || {})[today]) || [];
 
-      const savedStudy       = segments.filter(s => s.type === 'study')
-                                       .reduce((a, s) => a + s.duration, 0);
-      const savedDistraction = segments.filter(s => s.type === 'distraction')
-                                       .reduce((a, s) => a + s.duration, 0);
+      const savedStudy  = segments.filter(s => s.type === 'study')
+                                  .reduce((a, s) => a + s.duration, 0);
+      const savedDist   = segments.filter(s => s.type === 'distraction')
+                                  .reduce((a, s) => a + s.duration, 0);
 
-      // Add live time from the currently active segment
-      const liveSeconds = activeStartTime
+      const liveSecs = activeStartTime
         ? Math.floor((Date.now() - activeStartTime) / 1000)
         : 0;
 
-      const studyTotal       = savedStudy       + (activeType === 'study'       ? liveSeconds : 0);
-      const distractionTotal = savedDistraction + (activeType === 'distraction' ? liveSeconds : 0);
-
-      studyTimeEl.textContent    = formatDuration(studyTotal);
-      distractTimeEl.textContent = formatDuration(distractionTotal);
+      studyTimeEl.textContent    = fmt(savedStudy + (activeType === 'study'       ? liveSecs : 0));
+      distractTimeEl.textContent = fmt(savedDist  + (activeType === 'distraction' ? liveSecs : 0));
     });
 
     chrome.runtime.sendMessage({ action: 'getStatus' }, (response) => {
       if (chrome.runtime.lastError || !response) return;
-
       activeStartTime = response.active ? response.startTime : null;
-      activeType      = response.active ? response.type : null;
+      activeType      = response.active ? response.type      : null;
+      setStatus(response.type);
+    });
+  }
 
-      if (response.type === 'study') {
-        statusEl.textContent = '📖 Studying';
-        statusEl.style.color = '#16a34a';
-      } else if (response.type === 'distraction') {
-        statusEl.textContent = '⚠️ Off-task';
-        statusEl.style.color = '#dc2626';
+  // ── Done Studying ─────────────────────────────────────────────────────────────
+  // FIX: MV3 service workers unreliably keep message channels open for async
+  // responses. Instead, we tell the background to generate + STORE the report,
+  // then read it directly from chrome.storage.local.
+  doneBtn.addEventListener('click', () => {
+    doneBtn.disabled    = true;
+    doneBtn.textContent = 'Generating…';
+
+    chrome.runtime.sendMessage({ action: 'endStudyDay' }, () => {
+      // Background has stored the report in storage under 'lastReport'.
+      // Poll until it appears (handles service worker wake-up delay).
+      pollForReport(0);
+    });
+  });
+
+  function pollForReport(attempts) {
+    if (attempts > 20) {
+      // Gave up after ~4s — show a fallback error state
+      doneBtn.disabled    = false;
+      doneBtn.textContent = 'Try again';
+      return;
+    }
+
+    chrome.storage.local.get(['lastReport'], (result) => {
+      if (result.lastReport) {
+        renderReport(result.lastReport);
+        // Clear it so a fresh session starts clean
+        chrome.storage.local.remove('lastReport');
+        doneBtn.textContent = 'Session ended';
       } else {
-        statusEl.textContent = '⏸ Idle';
-        statusEl.style.color = '#6b7280';
+        setTimeout(() => pollForReport(attempts + 1), 200);
       }
     });
   }
 
-  // ─── Done Studying → generate report ───────────────────────────────────────
-
-  doneBtn.addEventListener('click', () => {
-    doneBtn.disabled = true;
-    doneBtn.textContent = 'Generating…';
-
-    chrome.runtime.sendMessage({ action: 'endStudyDay' }, (response) => {
-      if (!response?.report) {
-        doneBtn.disabled = false;
-        doneBtn.textContent = 'Done Studying';
-        return;
-      }
-      renderReport(response.report);
-      doneBtn.textContent = 'Session Ended';
-    });
-  });
-
+  // ── Report rendering ──────────────────────────────────────────────────────────
   function renderReport(r) {
-    const pctColor = r.productivityPct >= 70 ? '#16a34a'
-                   : r.productivityPct >= 40 ? '#d97706'
-                   : '#dc2626';
+    const pct = r.productivityPct;
+    const color = pct >= 70 ? '#2d6a4f' : pct >= 40 ? '#d97706' : '#c0392b';
 
-    const domainRows = Object.entries(r.distractionByDomain)
-      .sort((a, b) => b[1] - a[1])
-      .map(([domain, secs]) =>
-        `  • ${domain}: ${formatDuration(secs)}`
-      ).join('\n') || '  None';
+    pctHero.textContent  = `${pct}%`;
+    pctHero.style.color  = color;
+    pctSub.textContent   = pct >= 70 ? 'Great session.'
+                         : pct >= 40 ? 'Room to improve.'
+                         : 'Lots to work on.';
 
-    const tips = r.recommendations.map(t => `  💡 ${t}`).join('\n');
+    reportRows.innerHTML = `
+      <div class="report-row">
+        <span class="report-row-label">Session duration</span>
+        <span class="report-row-val">${fmt(r.sessionDuration)}</span>
+      </div>
+      <div class="report-row">
+        <span class="report-row-label">Study time</span>
+        <span class="report-row-val" style="color:#2d6a4f">${fmt(r.totalStudy)}</span>
+      </div>
+      <div class="report-row">
+        <span class="report-row-label">Distraction time</span>
+        <span class="report-row-val" style="color:#c0392b">${fmt(r.totalDistraction)}</span>
+      </div>
+    `;
 
-    reportEl.innerHTML = `
-<span style="font-size:22px;font-weight:bold;color:${pctColor}">${r.productivityPct}% productive</span>
+    const domains = Object.entries(r.distractionByDomain).sort((a, b) => b[1] - a[1]);
+    if (domains.length > 0) {
+      distractionItems.innerHTML = domains.map(([domain, secs]) => `
+        <div class="distraction-item">
+          <span class="distraction-domain">${domain}</span>
+          <span class="distraction-dur">${fmt(secs)}</span>
+        </div>
+      `).join('');
+      distractionList.style.display = 'block';
+    }
 
-🕐 Session duration:   ${formatDuration(r.sessionDuration)}
-📖 Study time:         ${formatDuration(r.totalStudy)}
-📺 Distraction time:   ${formatDuration(r.totalDistraction)}
-
-Top distractions:
-${domainRows}
-
-Recommendations:
-${tips}
-    `.trim();
+    if (r.recommendations?.length > 0) {
+      tipsItems.innerHTML = r.recommendations.map(t =>
+        `<p class="tip">${t}</p>`
+      ).join('');
+      tipsList.style.display = 'block';
+    }
 
     reportSection.style.display = 'block';
   }
 
-  function formatDuration(seconds) {
+  // ── Format duration ───────────────────────────────────────────────────────────
+  function fmt(seconds) {
+    if (!seconds || seconds < 1) return '0s';
     if (seconds < 60) return `${seconds}s`;
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
@@ -109,8 +163,7 @@ ${tips}
     return `${m}m ${s}s`;
   }
 
-  // ─── Listen for background pushes ──────────────────────────────────────────
-
+  // ── Background status push ────────────────────────────────────────────────────
   chrome.runtime.onMessage.addListener((message) => {
     if (message.action === 'statusUpdate') updateUI();
   });
