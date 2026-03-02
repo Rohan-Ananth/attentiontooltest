@@ -4,7 +4,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   const whitelistUrlInput  = document.getElementById('whitelistUrl');
   const addWhitelistBtn    = document.getElementById('addWhitelist');
   const whitelistItemsDiv  = document.getElementById('whitelistItems');
-  const reportContent      = document.getElementById('reportContent');
   const feedbackPill       = document.getElementById('feedback');
   const settingsFeedback   = document.getElementById('settingsFeedback');
   const graceInput         = document.getElementById('graceInput');
@@ -116,8 +115,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ── Settings load / save ────────────────────────────────────────────────────
   async function loadSettings() {
-    const result = await chrome.storage.local.get(['gracePeriod', 'idleThreshold', 'theme']);
-    if (result.gracePeriod)    graceInput.value = result.graceperiod || result.graceperiod || result.gracePeriod;
+    const result = await chrome.storage.local.get(['graceperiod', 'gracePeriod', 'idleThreshold', 'theme']);
+    const savedGrace = result.graceperiod ?? result.gracePeriod;
+    if (savedGrace)            graceInput.value = savedGrace;
     if (result.idleThreshold)  idleInput.value  = result.idleThreshold;
     const theme = result.theme || 'light';
     applyTheme(theme);
@@ -191,91 +191,26 @@ document.addEventListener('DOMContentLoaded', async () => {
   async function loadReports() {
     const result = await chrome.storage.local.get(['segments']);
     const segsByDate = result.segments || {};
-    reportContent.innerHTML = '';
+    const table = document.querySelector('.history-table');
+    if (!table) return;
 
-    const dates = Object.keys(segsByDate).sort().reverse();
-    if (dates.length === 0) {
-      reportContent.innerHTML = `
-        <tr><td colspan="5" class="history-empty">
-          No sessions recorded yet. Start studying to see your history here.
-        </td></tr>`;
-      return;
-    }
-
-    dates.forEach(date => {
-      const segs = segsByDate[date];
-      const studySegs = segs.filter(s => s.type === 'study');
-      const distSegs  = segs.filter(s => s.type === 'distraction');
-      const totalStudy = studySegs.reduce((a, s) => a + s.duration, 0);
-      const totalDist  = distSegs.reduce((a, s) => a + s.duration, 0);
-      const total = totalStudy + totalDist;
-      const pct   = total > 0 ? Math.round((totalStudy / total) * 100) : 0;
-      const color = pct >= 70 ? '#2d6a4f' : pct >= 40 ? '#d97706' : '#c0392b';
-      const rowId = `segs-${date.replace(/-/g, '')}`;
-
-      // Summary row
-      const summaryRow = document.createElement('tr');
-      summaryRow.className = 'summary-row';
-      summaryRow.innerHTML = `
-        <td class="date-cell">
-          <span class="expand-icon">▶</span>${date}
-        </td>
-        <td class="dur-study">${fmt(totalStudy)}</td>
-        <td class="dur-dist">${totalDist > 0 ? fmt(totalDist) : '—'}</td>
-        <td>
-          <div class="pct-wrap">
-            <div class="pct-bar-bg">
-              <div class="pct-bar-fill" style="width:${pct}%;background:${color}"></div>
-            </div>
-            <span class="pct-label" style="color:${color}">${pct}%</span>
-          </div>
-        </td>
-        <td style="font-family:monospace;font-size:12px;color:#6b6760">${segs.length}</td>
-      `;
-
-      // Segment detail rows (hidden by default)
-      const segGroup = document.createElement('tbody');
-      segGroup.className = 'segment-rows';
-      segGroup.id = rowId;
-
-      segs.forEach(s => {
-        const segRow = document.createElement('tr');
-        segRow.className = 'segment-row';
-        const start = new Date(s.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        const end   = new Date(s.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        const typeClass = s.type === 'study' ? 'seg-study' : 'seg-dist';
-        const domain = (() => { try { return new URL(s.url).hostname.replace('www.',''); } catch { return s.url; } })();
-        segRow.innerHTML = `
-          <td class="${typeClass}">${s.type}</td>
-          <td>${start} – ${end}</td>
-          <td>${fmt(s.duration)}</td>
-          <td colspan="2" style="color:var(--ink-3);font-size:11px;overflow:hidden;text-overflow:ellipsis;max-width:200px">${domain}</td>
-        `;
-        segGroup.appendChild(segRow);
-      });
-
-      // Toggle on click
-      summaryRow.addEventListener('click', () => {
-        const open = segGroup.classList.toggle('open');
-        summaryRow.querySelector('.date-cell').classList.toggle('open', open);
-      });
-
-      reportContent.appendChild(summaryRow);
-      reportContent.after(segGroup); // segGroup needs to be a sibling tbody
-      // Since reportContent is a tbody, we need to add segGroup after the table body
-      // Better: append to the table directly
-      summaryRow.after(segGroup); // This won't work in a tbody context - use a different approach
-    });
-
-    // Fix: segment-rows tbodies need to be inserted into the table, not the tbody
-    // Rebuild using the table element
-    const table = reportContent.closest('table');
-    // Clear everything after thead
     while (table.tBodies.length > 0) {
       table.removeChild(table.tBodies[0]);
     }
 
-    dates.forEach(date => {
+    const dates = Object.keys(segsByDate).sort().reverse();
+    if (dates.length === 0) {
+      const emptyBody = document.createElement('tbody');
+      emptyBody.id = 'reportContent';
+      emptyBody.innerHTML = `
+        <tr><td colspan="5" class="history-empty">
+          No sessions recorded yet. Start studying to see your history here.
+        </td></tr>`;
+      table.appendChild(emptyBody);
+      return;
+    }
+
+    dates.forEach((date, index) => {
       const segs = segsByDate[date];
       const studySegs = segs.filter(s => s.type === 'study');
       const distSegs  = segs.filter(s => s.type === 'distraction');
@@ -287,6 +222,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       // tbody for the summary row
       const summaryBody = document.createElement('tbody');
+      if (index === 0) summaryBody.id = 'reportContent';
       const summaryRow  = document.createElement('tr');
       summaryRow.className = 'summary-row';
       summaryRow.innerHTML = `
