@@ -43,10 +43,16 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ── Live ticker ───────────────────────────────────────────────────────────────
+  function applyStatus(session, dayStart) {
+    activeStartTime = session ? session.startTime : null;
+    activeType      = session ? session.type      : null;
+    setStatus(session ? session.type : null);
+  }
+
   function updateUI() {
     const today = new Date().toISOString().split('T')[0];
 
-    chrome.storage.local.get(['segments'], (result) => {
+    chrome.storage.local.get(['segments', '_liveState'], (result) => {
       const segments = ((result.segments || {})[today]) || [];
 
       const savedStudy  = segments.filter(s => s.type === 'study')
@@ -60,10 +66,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
       studyTimeEl.textContent    = fmt(savedStudy + (activeType === 'study'       ? liveSecs : 0));
       distractTimeEl.textContent = fmt(savedDist  + (activeType === 'distraction' ? liveSecs : 0));
+
+      // Use persisted _liveState as immediate source of truth
+      // (available even when the service worker is asleep)
+      const live = result._liveState;
+      if (live) {
+        applyStatus(live.currentSession, live.studyDayStart);
+      }
     });
 
+    // Also try messaging the background for the freshest state —
+    // this will wake the service worker if it's asleep
     chrome.runtime.sendMessage({ action: 'getStatus' }, (response) => {
       if (chrome.runtime.lastError || !response) return;
+      // Background is awake and responded — use its authoritative state
       activeStartTime = response.active ? response.startTime : null;
       activeType      = response.active ? response.type      : null;
       setStatus(response.type);
