@@ -486,6 +486,127 @@
       font-style: italic;
     }
 
+    /* ── Streak & Weekly Summary ──────────────────────────────────────────── */
+    .streak-cards {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 2px;
+      margin-top: 28px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .streak-card {
+      background: var(--surface);
+      padding: 22px 18px;
+      text-align: center;
+    }
+    .streak-card-label {
+      font-family: 'DM Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+      margin-bottom: 10px;
+    }
+    .streak-card-value {
+      font-family: 'DM Serif Display', Georgia, serif;
+      font-size: 30px;
+      line-height: 1;
+      color: var(--accent);
+      margin-bottom: 4px;
+    }
+    .streak-card-unit {
+      font-family: 'DM Mono', monospace;
+      font-size: 10px;
+      color: var(--ink-3);
+      letter-spacing: 0.06em;
+    }
+
+    .heatmap-wrap {
+      margin-top: 28px;
+    }
+    .heatmap-title {
+      font-family: 'DM Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+      margin-bottom: 14px;
+    }
+    .heatmap-row {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 6px;
+    }
+    .heatmap-day {
+      aspect-ratio: 1;
+      border-radius: 8px;
+      background: var(--accent);
+      opacity: 0.08;
+      position: relative;
+      transition: opacity 0.3s, transform 0.15s;
+      cursor: default;
+      max-height: 72px;
+    }
+    .heatmap-day:hover {
+      transform: scale(1.06);
+    }
+    .heatmap-day-label {
+      position: absolute;
+      top: 8px;
+      left: 10px;
+      font-family: 'DM Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--bg);
+      opacity: 0.9;
+      pointer-events: none;
+    }
+    .heatmap-day-hours {
+      position: absolute;
+      bottom: 8px;
+      right: 10px;
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      color: var(--bg);
+      opacity: 0.85;
+      pointer-events: none;
+    }
+    /* Low activity: keep labels dark since tile is almost transparent */
+    .heatmap-day.low .heatmap-day-label,
+    .heatmap-day.low .heatmap-day-hours {
+      color: var(--ink-3);
+    }
+    .heatmap-day.today {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    .heatmap-legend {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 12px;
+      justify-content: flex-end;
+      font-family: 'DM Mono', monospace;
+      font-size: 10px;
+      color: var(--ink-3);
+    }
+    .heatmap-swatch {
+      width: 14px;
+      height: 14px;
+      border-radius: 3px;
+      background: var(--accent);
+    }
+
+    @media (max-width: 600px) {
+      .streak-cards {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
     /* ── Footer ───────────────────────────────────────────────────────────── */
     .footer {
       margin-top: 64px;
@@ -691,6 +812,49 @@
           <p>Delete every session ever recorded. Cannot be undone.</p>
         </div>
         <button class="btn btn-danger" id="clearAllBtn">Clear all</button>
+      </div>
+    </section>
+
+    <!-- Streak & Weekly Summary -->
+    <section class="section">
+      <p class="section-label">This week</p>
+      <h2>Your rhythm, at a glance.</h2>
+
+      <div class="streak-cards">
+        <div class="streak-card">
+          <p class="streak-card-label">Current streak</p>
+          <p class="streak-card-value" id="currentStreak">—</p>
+          <p class="streak-card-unit" id="currentStreakUnit">days</p>
+        </div>
+        <div class="streak-card">
+          <p class="streak-card-label">Longest streak</p>
+          <p class="streak-card-value" id="longestStreak">—</p>
+          <p class="streak-card-unit" id="longestStreakUnit">days</p>
+        </div>
+        <div class="streak-card">
+          <p class="streak-card-label">Week study total</p>
+          <p class="streak-card-value" id="weekStudy">—</p>
+          <p class="streak-card-unit">this week</p>
+        </div>
+        <div class="streak-card">
+          <p class="streak-card-label">Week avg focus</p>
+          <p class="streak-card-value" id="weekAvgFocus">—</p>
+          <p class="streak-card-unit">productivity</p>
+        </div>
+      </div>
+
+      <div class="heatmap-wrap">
+        <p class="heatmap-title">Daily activity</p>
+        <div class="heatmap-row" id="heatmapRow"></div>
+        <div class="heatmap-legend">
+          <span>Less</span>
+          <span class="heatmap-swatch" style="opacity:0.15"></span>
+          <span class="heatmap-swatch" style="opacity:0.35"></span>
+          <span class="heatmap-swatch" style="opacity:0.6"></span>
+          <span class="heatmap-swatch" style="opacity:0.85"></span>
+          <span class="heatmap-swatch" style="opacity:1"></span>
+          <span>More</span>
+        </div>
       </div>
     </section>
 
