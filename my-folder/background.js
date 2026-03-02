@@ -68,12 +68,24 @@ restoreState();
 
 // ─── Whitelist helpers ────────────────────────────────────────────────────────
 
+function extractHostname(url) {
+  try { return new URL(url).hostname.replace(/^www\./, ''); }
+  catch { return ''; }
+}
+
+function isInternalUrl(url) {
+  if (!url) return true;
+  return /^(chrome|chrome-extension|about|edge|brave|opera|vivaldi|file):/.test(url);
+}
+
 async function isWhitelisted(url) {
   if (!url) return false;
+  const hostname = extractHostname(url);
+  if (!hostname) return false;
   return new Promise((resolve) => {
     chrome.storage.local.get(['whitelist'], (result) => {
       const whitelist = result.whitelist || [];
-      resolve(whitelist.some(item => url.includes(item)));
+      resolve(whitelist.some(item => hostname === item || hostname.endsWith('.' + item)));
     });
   });
 }
@@ -150,7 +162,11 @@ async function checkCurrentTab() {
   chrome.tabs.query({ active: true, lastFocusedWindow: true }, async (tabs) => {
     if (tabs.length === 0) { await endSegment(); return; }
 
-    const tab        = tabs[0];
+    const tab = tabs[0];
+
+    // Ignore browser-internal pages — they're not study or distraction
+    if (isInternalUrl(tab.url)) return;
+
     const whitelisted = await isWhitelisted(tab.url);
     const newType    = whitelisted ? 'study' : 'distraction';
 
