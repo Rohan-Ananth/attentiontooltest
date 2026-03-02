@@ -123,19 +123,52 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
+  // ── Whitelist helpers ─────────────────────────────────────────────────────────
+  function sanitizeDomain(input) {
+    let cleaned = input.trim().toLowerCase();
+
+    // Strip protocols
+    cleaned = cleaned.replace(/^(https?:\/\/)/, '');
+    // Strip www.
+    cleaned = cleaned.replace(/^www\./, '');
+    // Strip trailing slashes and paths
+    cleaned = cleaned.replace(/\/.*$/, '');
+    // Strip port numbers
+    cleaned = cleaned.replace(/:\d+$/, '');
+    // Strip leading/trailing dots
+    cleaned = cleaned.replace(/^\.+|\.+$/g, '');
+
+    return cleaned;
+  }
+
+  function isValidDomain(domain) {
+    if (!domain || domain.length < 3) return false;
+    if (!domain.includes('.')) return false;
+    // Basic domain pattern: alphanumeric, hyphens, dots
+    const pattern = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}$/;
+    return pattern.test(domain);
+  }
+
   addWhitelistBtn.addEventListener('click', async () => {
-    const url = whitelistUrlInput.value.trim();
-    if (!url) { showFeedback(feedbackPill, 'Type a domain first', true); return; }
+    const raw = whitelistUrlInput.value.trim();
+    if (!raw) { showFeedback(feedbackPill, 'Type a domain first', true); return; }
+
+    const domain = sanitizeDomain(raw);
+
+    if (!isValidDomain(domain)) {
+      showFeedback(feedbackPill, `"${raw}" doesn't look like a valid domain`, true);
+      return;
+    }
 
     try {
       const result   = await chrome.storage.local.get(['whitelist']);
       const whitelist = result.whitelist || [];
-      if (whitelist.includes(url)) { showFeedback(feedbackPill, 'Already added'); return; }
+      if (whitelist.includes(domain)) { showFeedback(feedbackPill, 'Already added'); return; }
 
-      whitelist.push(url);
+      whitelist.push(domain);
       await chrome.storage.local.set({ whitelist });
       whitelistUrlInput.value = '';
-      showFeedback(feedbackPill, 'Added ✓');
+      showFeedback(feedbackPill, `Added ${domain} ✓`);
       await loadWhitelist();
     } catch (err) {
       showFeedback(feedbackPill, 'Error: ' + err.message, true);
@@ -224,6 +257,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     delete segs[dateKey];
     await chrome.storage.local.set({ segments: segs });
     chrome.runtime.sendMessage({ action: 'clearDay' }).catch(() => {});
+    await loadStreakAndWeekly();
     await loadReports();
     showFeedback(settingsFeedback, 'Today cleared');
   });
@@ -232,6 +266,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!confirm('Delete ALL session history? This cannot be undone.')) return;
     await chrome.storage.local.remove('segments');
     chrome.runtime.sendMessage({ action: 'clearDay' }).catch(() => {});
+    await loadStreakAndWeekly();
     await loadReports();
     showFeedback(settingsFeedback, 'All history cleared');
   });
@@ -332,9 +367,134 @@ document.addEventListener('DOMContentLoaded', async () => {
     return `${m}m ${s}s`;
   }
 
+  // ── Streak & Weekly Summary ──────────────────────────────────────────────────
+  async function loadStreakAndWeekly() {
+    const result     = await chrome.storage.local.get(['segments']);
+    const segsByDate = result.segments || {};
+    const allDates   = Object.keys(segsByDate).sort();
+
+    // ── Streak calculation ──────────────────────────────────────────────────
+    const today    = new Date();
+    const todayKey = today.toISOString().split('T')[0];
+
+    function dateKey(d) { return d.toISOString().split('T')[0]; }
+    function prevDay(d) {
+      const p = new Date(d);
+      p.setDate(p.getDate() - 1);
+      return p;
+    }
+
+    // Current streak: count backwards from today (or yesterday if no session today yet)
+    let currentStreak = 0;
+    let cursor = new Date(today);
+    // If today has data, start counting from today; otherwise from yesterday
+    if (!segsByDate[dateKey(cursor)]) {
+      cursor = prevDay(cursor);
+    }
+    while (segsByDate[dateKey(cursor)]) {
+      currentStreak++;
+      cursor = prevDay(cursor);
+    }
+
+    // Longest streak
+    let longestStreak = 0;
+    let tempStreak    = 0;
+    let prevDate      = null;
+    allDates.forEach(d => {
+      if (prevDate) {
+        const expected = new Date(prevDate);
+        expected.setDate(expected.getDate() + 1);
+        if (dateKey(expected) === d) {
+          tempStreak++;
+        } else {
+          tempStreak = 1;
+        }
+      } else {
+        tempStreak = 1;
+      }
+      if (tempStreak > longestStreak) longestStreak = tempStreak;
+      prevDate = d;
+    });
+
+    document.getElementById('currentStreak').textContent = currentStreak;
+    document.getElementById('currentStreakUnit').textContent = currentStreak === 1 ? 'day' : 'days';
+    document.getElementById('longestStreak').textContent = longestStreak;
+    document.getElementById('longestStreakUnit').textContent = longestStreak === 1 ? 'day' : 'days';
+
+    // ── This week's data ────────────────────────────────────────────────────
+    // Get Monday of current week
+    const monday = new Date(today);
+    const dayOfWeek = monday.getDay();
+    const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // adjust so Monday = 0
+    monday.setDate(monday.getDate() - diff);
+    monday.setHours(0, 0, 0, 0);
+
+    const weekDays = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday);
+      d.setDate(d.getDate() + i);
+      weekDays.push(dateKey(d));
+    }
+    const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+    let weekStudyTotal = 0;
+    let weekDistTotal  = 0;
+    let weekDaysWithData = 0;
+    const weekDayStudy = [];
+
+    weekDays.forEach(dk => {
+      const segs = segsByDate[dk] || [];
+      const study = segs.filter(s => s.type === 'study').reduce((a, s) => a + s.duration, 0);
+      const dist  = segs.filter(s => s.type === 'distraction').reduce((a, s) => a + s.duration, 0);
+      weekStudyTotal += study;
+      weekDistTotal  += dist;
+      weekDayStudy.push(study);
+      if (segs.length > 0) weekDaysWithData++;
+    });
+
+    const weekTotal   = weekStudyTotal + weekDistTotal;
+    const weekAvgPct  = weekTotal > 0 ? Math.round((weekStudyTotal / weekTotal) * 100) : 0;
+
+    document.getElementById('weekStudy').textContent = fmt(weekStudyTotal);
+    document.getElementById('weekAvgFocus').textContent = weekAvgPct + '%';
+
+    // ── Heatmap ─────────────────────────────────────────────────────────────
+    const heatmapRow = document.getElementById('heatmapRow');
+    heatmapRow.innerHTML = '';
+
+    const maxStudy = Math.max(...weekDayStudy, 1); // avoid div by zero
+
+    weekDays.forEach((dk, i) => {
+      const study   = weekDayStudy[i];
+      const ratio   = study / maxStudy;
+      // Map to opacity: no data = 0.08, some data = 0.15–1.0
+      const opacity = study === 0 ? 0.08 : 0.15 + ratio * 0.85;
+
+      const isToday = dk === todayKey;
+      const hours   = study >= 3600
+        ? (study / 3600).toFixed(1) + 'h'
+        : study >= 60
+          ? Math.floor(study / 60) + 'm'
+          : study > 0
+            ? study + 's'
+            : '';
+
+      const cell = document.createElement('div');
+      cell.className = 'heatmap-day' + (isToday ? ' today' : '') + (opacity < 0.4 ? ' low' : '');
+      cell.style.opacity = opacity;
+      cell.innerHTML = `
+        <span class="heatmap-day-label">${dayLabels[i]}</span>
+        <span class="heatmap-day-hours">${hours}</span>
+      `;
+      cell.title = `${dk}: ${hours || 'No study'}`;
+      heatmapRow.appendChild(cell);
+    });
+  }
+
   // ── Init ────────────────────────────────────────────────────────────────────
   await checkAuth();
   await loadSettings();
   await loadWhitelist();
+  await loadStreakAndWeekly();
   await loadReports();
 });
