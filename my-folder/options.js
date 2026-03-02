@@ -115,10 +115,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ── Settings load / save ────────────────────────────────────────────────────
   async function loadSettings() {
-    const result = await chrome.storage.local.get(['graceperiod', 'gracePeriod', 'idleThreshold', 'theme']);
+    const result = await chrome.storage.local.get([
+      'graceperiod',
+      'gracePeriod',
+      'idleThreshold',
+      'theme',
+    ]);
     const savedGrace = result.graceperiod ?? result.gracePeriod;
-    if (savedGrace)            graceInput.value = savedGrace;
-    if (result.idleThreshold)  idleInput.value  = result.idleThreshold;
+    if (savedGrace) graceInput.value = savedGrace;
+    if (result.idleThreshold) idleInput.value = result.idleThreshold;
     const theme = result.theme || 'light';
     applyTheme(theme);
   }
