@@ -1,7 +1,7 @@
 let currentSession = null;      // active distraction or study segment
-let studyDayStart = null;       // when the user started studying today
-let startTimer = null;
-const START_DELAY = 5000;
+let studyDayStart  = null;       // when the user started studying today
+let startTimer     = null;
+const START_DELAY    = 5000;
 const IDLE_THRESHOLD = 60;
 
 // ─── Whitelist helpers ────────────────────────────────────────────────────────
@@ -17,11 +17,9 @@ async function isWhitelisted(url) {
 }
 
 // ─── Segment tracking ─────────────────────────────────────────────────────────
-// Each segment: { type: 'study'|'distraction', startTime, url }
 
 function attemptStartSegment(url, type) {
   clearTimeout(startTimer);
-  // Distractions wait 5s (soft timer); study pages start immediately
   const delay = type === 'distraction' ? START_DELAY : 0;
   startTimer = setTimeout(() => {
     if (!currentSession) startSegment(url, type);
@@ -30,8 +28,6 @@ function attemptStartSegment(url, type) {
 
 function startSegment(url, type) {
   if (currentSession) return;
-
-  // Record overall study day start on first activity
   if (!studyDayStart) studyDayStart = Date.now();
 
   currentSession = { type, url, startTime: Date.now() };
@@ -43,14 +39,14 @@ async function endSegment() {
   clearTimeout(startTimer);
   if (!currentSession) return;
 
-  const endTime = Date.now();
+  const endTime  = Date.now();
   const duration = Math.floor((endTime - currentSession.startTime) / 1000);
-  const segment = {
-    type: currentSession.type,
+  const segment  = {
+    type:      currentSession.type,
     startTime: currentSession.startTime,
     endTime,
     duration,
-    url: currentSession.url
+    url:       currentSession.url
   };
 
   const dateKey = new Date(currentSession.startTime).toISOString().split('T')[0];
@@ -75,18 +71,16 @@ async function checkCurrentTab() {
   chrome.tabs.query({ active: true, lastFocusedWindow: true }, async (tabs) => {
     if (tabs.length === 0) { await endSegment(); return; }
 
-    const tab = tabs[0];
+    const tab        = tabs[0];
     const whitelisted = await isWhitelisted(tab.url);
-    const newType = whitelisted ? 'study' : 'distraction';
+    const newType    = whitelisted ? 'study' : 'distraction';
 
     if (!currentSession) {
       attemptStartSegment(tab.url, newType);
     } else if (currentSession.type !== newType || currentSession.url !== tab.url) {
-      // Switched study ↔ distraction, or navigated to a different URL
       await endSegment();
       attemptStartSegment(tab.url, newType);
     }
-    // Same type + same URL → keep counting
   });
 }
 
@@ -107,22 +101,19 @@ chrome.idle.onStateChanged.addListener((state) => {
 // ─── Report generation ────────────────────────────────────────────────────────
 
 async function generateReport() {
-  await endSegment(); // save any in-progress segment first
+  await endSegment();
 
   const dateKey = new Date().toISOString().split('T')[0];
 
   return new Promise((resolve) => {
     chrome.storage.local.get(['segments'], (result) => {
-      const segments = (result.segments || {})[dateKey] || [];
-
+      const segments        = (result.segments || {})[dateKey] || [];
       const studySegs       = segments.filter(s => s.type === 'study');
       const distractionSegs = segments.filter(s => s.type === 'distraction');
-
-      const totalStudy       = studySegs.reduce((a, s) => a + s.duration, 0);
+      const totalStudy      = studySegs.reduce((a, s) => a + s.duration, 0);
       const totalDistraction = distractionSegs.reduce((a, s) => a + s.duration, 0);
-      const totalTracked     = totalStudy + totalDistraction;
+      const totalTracked    = totalStudy + totalDistraction;
 
-      // Group distractions by domain
       const byDomain = {};
       distractionSegs.forEach(s => {
         const domain = extractDomain(s.url);
@@ -143,14 +134,20 @@ async function generateReport() {
         totalStudy,
         totalDistraction,
         productivityPct,
-        studySegments: studySegs,
+        studySegments:      studySegs,
         distractionSegments: distractionSegs,
         distractionByDomain: byDomain,
-        recommendations: buildRecommendations(productivityPct, byDomain, totalDistraction)
+        recommendations:    buildRecommendations(productivityPct, byDomain, totalDistraction)
       };
 
-      studyDayStart = null; // reset for next session
-      resolve(report);
+      studyDayStart = null;
+
+      // ── KEY FIX: store report in chrome.storage so popup can read it ──────
+      // MV3 service workers don't reliably keep message channels open for async
+      // sendResponse. Storing in storage sidesteps that entirely.
+      chrome.storage.local.set({ lastReport: report }, () => {
+        resolve(report);
+      });
     });
   });
 }
@@ -175,7 +172,7 @@ function buildRecommendations(pct, byDomain, totalDistraction) {
 
   const topDomain = Object.entries(byDomain).sort((a, b) => b[1] - a[1])[0];
   if (topDomain && topDomain[1] > 60) {
-    tips.push(`Your biggest distraction was ${topDomain[0]} (${formatDuration(topDomain[1])}). Consider adding it to your whitelist or scheduling it as a reward after studying.`);
+    tips.push(`Your biggest distraction was ${topDomain[0]} (${formatDuration(topDomain[1])}). Try scheduling it as a reward after studying.`);
   }
 
   if (totalDistraction > 3600) {
@@ -189,9 +186,8 @@ function formatDuration(seconds) {
   if (seconds < 60) return `${seconds}s`;
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
   if (h > 0) return `${h}h ${m}m`;
-  return `${m}m ${s}s`;
+  return `${m}m ${seconds % 60}s`;
 }
 
 // ─── Message handler ──────────────────────────────────────────────────────────
@@ -202,16 +198,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   } else if (message.action === 'getStatus') {
     sendResponse({
-      active: !!currentSession,
-      type: currentSession?.type ?? null,
-      startTime: currentSession?.startTime ?? null,
-      url: currentSession?.url ?? null,
+      active:        !!currentSession,
+      type:          currentSession?.type      ?? null,
+      startTime:     currentSession?.startTime ?? null,
+      url:           currentSession?.url       ?? null,
       studyDayStart
     });
 
   } else if (message.action === 'endStudyDay') {
-    generateReport().then(report => sendResponse({ report }));
-    return true; // keep message channel open for async response
+    // Generate and STORE the report, then ack.
+    // Popup polls chrome.storage for 'lastReport' rather than waiting on this response.
+    generateReport().then(() => {
+      sendResponse({ ok: true });
+    });
+    return true; // keep channel open just long enough for the ack
 
   } else if (message.action === 'clearDay') {
     const dateKey = new Date().toISOString().split('T')[0];
