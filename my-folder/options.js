@@ -18,6 +18,50 @@ document.addEventListener('DOMContentLoaded', async () => {
   const darkBtn            = document.getElementById('darkBtn');
   const openTimerBtn       = document.getElementById('openTimerBtn');
 
+  // Auth elements
+  const authStatusEl       = document.getElementById('authStatus');
+  const authUserEl         = document.getElementById('authUser');
+  const signOutBtn         = document.getElementById('signOutBtn');
+  const signInLink         = document.getElementById('signInLink');
+
+  // ── Auth check ──────────────────────────────────────────────────────────────
+  async function checkAuth() {
+    try {
+      const user = await StudyAuth.getCurrentUser();
+      if (user) {
+        authUserEl.textContent     = user.displayName || user.email;
+        authStatusEl.style.display = 'inline';
+        signInLink.style.display   = 'none';
+      } else {
+        authStatusEl.style.display = 'none';
+        signInLink.style.display   = 'inline';
+      }
+    } catch {
+      // Auth not configured yet — hide both, extension works without auth
+      authStatusEl.style.display = 'none';
+      signInLink.style.display   = 'none';
+    }
+  }
+
+  signOutBtn.addEventListener('click', async () => {
+    await StudyAuth.signOut();
+    authStatusEl.style.display = 'none';
+    signInLink.style.display   = 'inline';
+  });
+
+  signInLink.addEventListener('click', (e) => {
+    e.preventDefault();
+    const loginUrl = chrome.runtime.getURL('login.html');
+    window.open(loginUrl, 'study-login', 'width=900,height=600');
+  });
+
+  // Listen for successful auth from login window
+  window.addEventListener('message', (event) => {
+    if (event.data?.type === 'AUTH_SUCCESS') {
+      checkAuth();
+    }
+  });
+
   // ── Feedback helper ─────────────────────────────────────────────────────────
   function showFeedback(pill, msg, isError = false) {
     pill.textContent      = msg;
@@ -289,6 +333,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // ── Init ────────────────────────────────────────────────────────────────────
+  await checkAuth();
   await loadSettings();
   await loadWhitelist();
   await loadReports();
