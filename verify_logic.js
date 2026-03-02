@@ -5,12 +5,24 @@ const chromeMock = {
       data: {},
       get: (keys, cb) => {
         const result = {};
-        keys.forEach(k => result[k] = chromeMock.storage.local.data[k]);
-        setTimeout(() => cb(result), 0);
+        const keyArr = Array.isArray(keys) ? keys : [keys];
+        keyArr.forEach(k => result[k] = chromeMock.storage.local.data[k]);
+        // Support both callback and promise patterns (like real MV3 API)
+        if (cb) {
+          setTimeout(() => cb(result), 0);
+        }
+        return Promise.resolve(result);
       },
       set: (obj, cb) => {
         Object.assign(chromeMock.storage.local.data, obj);
         if (cb) setTimeout(cb, 0);
+        return Promise.resolve();
+      },
+      remove: (keys, cb) => {
+        const keyArr = Array.isArray(keys) ? keys : [keys];
+        keyArr.forEach(k => delete chromeMock.storage.local.data[k]);
+        if (cb) setTimeout(cb, 0);
+        return Promise.resolve();
       }
     }
   },
@@ -50,7 +62,13 @@ const sandbox = {
 vm.createContext(sandbox);
 vm.runInContext(backgroundCode, sandbox);
 
+// Wait for restoreState() to complete (it's async and runs on load)
+async function waitForRestore() {
+  await new Promise(r => setTimeout(r, 200));
+}
+
 async function testSessionTiming() {
+  await waitForRestore();
   console.log('Running Test: Session Timing');
   
   chromeMock.storage.local.data.whitelist = ['google.com'];
@@ -119,9 +137,78 @@ async function testWhitelist() {
   await new Promise(r => setTimeout(r, 500));
 }
 
+async function testPersistence() {
+  console.log('Running Test: Service Worker Persistence');
+  vm.runInContext('currentSession = null', sandbox);
+  
+  chromeMock.storage.local.data.whitelist = ['google.com'];
+
+  // Start a distraction segment
+  vm.runInContext("attemptStartSegment('reddit.com', 'distraction')", sandbox);
+  await new Promise(r => setTimeout(r, 6000));
+
+  // Verify segment started
+  const session = vm.runInContext('currentSession', sandbox);
+  if (!session || session.url !== 'reddit.com') {
+    console.error('❌ Segment did not start for persistence test');
+    process.exit(1);
+  }
+
+  // Check that _liveState was persisted to storage
+  const liveState = chromeMock.storage.local.data._liveState;
+  if (!liveState) {
+    console.error('❌ _liveState not found in storage');
+    process.exit(1);
+  }
+  if (!liveState.currentSession || liveState.currentSession.url !== 'reddit.com') {
+    console.error('❌ _liveState.currentSession does not match active session');
+    process.exit(1);
+  }
+  if (!liveState.studyDayStart) {
+    console.error('❌ _liveState.studyDayStart not persisted');
+    process.exit(1);
+  }
+  console.log('✅ Live state persisted to storage correctly');
+
+  // Simulate service worker restart: clear in-memory state, then restore
+  vm.runInContext('currentSession = null; studyDayStart = null;', sandbox);
+  vm.runInContext('restoreState()', sandbox);
+  await new Promise(r => setTimeout(r, 500));
+
+  const restored = vm.runInContext('currentSession', sandbox);
+  if (restored && restored.url === 'reddit.com' && restored.type === 'distraction') {
+    console.log('✅ Session restored after simulated service worker restart');
+  } else {
+    console.error('❌ Session not restored correctly:', restored);
+    process.exit(1);
+  }
+
+  const restoredDayStart = vm.runInContext('studyDayStart', sandbox);
+  if (restoredDayStart) {
+    console.log('✅ studyDayStart restored correctly');
+  } else {
+    console.error('❌ studyDayStart not restored');
+    process.exit(1);
+  }
+
+  // Clean up
+  vm.runInContext('endSegment()', sandbox);
+  await new Promise(r => setTimeout(r, 500));
+
+  // After ending, _liveState should have null currentSession
+  const clearedState = chromeMock.storage.local.data._liveState;
+  if (clearedState && !clearedState.currentSession) {
+    console.log('✅ Live state cleared after segment end');
+  } else {
+    console.error('❌ Live state not cleared after segment end');
+    process.exit(1);
+  }
+}
+
 async function runTests() {
   await testSessionTiming();
   await testWhitelist();
+  await testPersistence();
   console.log('All tests passed!');
 }
 
