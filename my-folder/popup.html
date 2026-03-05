@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Study Calendar</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:      #f5f3ef;
+      --surface: #ffffff;
+      --ink:     #1a1814;
+      --ink-2:   #6b6760;
+      --ink-3:   #b0ada8;
+      --accent:  #2d6a4f;
+      --accent-2:#e8f5e2;
+      --warn:    #c0392b;
+      --warn-2:  #fdf0ee;
+      --border:  #e4e1db;
+      --amber:   #d97706;
+    }
+
+    [data-theme="dark"] {
+      --bg:       #111009;
+      --surface:  #1c1a16;
+      --ink:      #f0ede8;
+      --ink-2:    #9e9a94;
+      --ink-3:    #5a5652;
+      --accent:   #52b788;
+      --accent-2: #132b1e;
+      --warn:     #e57373;
+      --warn-2:   #2d1212;
+      --amber:    #f59e0b;
+      --border:   #2e2b24;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg:       #111009;
+        --surface:  #1c1a16;
+        --ink:      #f0ede8;
+        --ink-2:    #9e9a94;
+        --ink-3:    #5a5652;
+        --accent:   #52b788;
+        --accent-2: #132b1e;
+        --warn:     #e57373;
+        --warn-2:   #2d1212;
+        --amber:    #f59e0b;
+        --border:   #2e2b24;
+      }
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      font-family: 'DM Sans', system-ui, sans-serif;
+      color: var(--ink);
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      font-size: 15px;
+    }
+
+    .page-wrap {
+      flex: 1;
+      width: 100%;
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 0 24px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ── */
+    .header {
+      padding: 32px 0 24px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg);
+    }
+    .eyebrow {
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+      margin-bottom: 6px;
+    }
+    .app-title {
+      font-family: 'DM Serif Display', Georgia, serif;
+      font-size: clamp(24px, 4vw, 36px);
+      line-height: 1.1;
+      color: var(--ink);
+    }
+    .app-title em { font-style: italic; color: var(--accent); }
+
+    /* ── Status pill ── */
+    .status-wrap { padding: 24px 0; }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 18px;
+      border-radius: 99px;
+      font-family: 'DM Mono', monospace;
+      font-size: 13px;
+      letter-spacing: 0.05em;
+      font-weight: 400;
+      transition: background 0.2s, color 0.2s;
+    }
+    .status-pill.studying   { background: var(--accent-2); color: var(--accent); }
+    .status-pill.distracted { background: var(--warn-2);   color: var(--warn); }
+    .status-pill.idle       { background: #f0eeea;          color: var(--ink-3); }
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+    .status-dot.pulse { animation: pulse 1.4s ease infinite; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.3; }
+    }
+
+    /* ── Stats ── */
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2px;
+      margin-bottom: 24px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .stat-card {
+      background: var(--surface);
+      padding: 24px 20px;
+    }
+    .stat-label {
+      font-family: 'DM Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+      margin-bottom: 8px;
+    }
+    .stat-value {
+      font-family: 'DM Mono', monospace;
+      font-size: clamp(24px, 4vw, 36px);
+      font-weight: 400;
+      line-height: 1;
+    }
+    .stat-value.study-val { color: var(--accent); }
+    .stat-value.dist-val  { color: var(--warn); }
+
+    /* ── Done button ── */
+    .btn-wrap { padding-bottom: 24px; }
+    #doneBtn {
+      width: 100%;
+      padding: 14px;
+      background: var(--ink);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      font-family: 'DM Sans', system-ui, sans-serif;
+      font-size: 15px;
+      font-weight: 500;
+      transition: opacity 0.15s, transform 0.1s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    #doneBtn:hover   { opacity: 0.85; }
+    #doneBtn:active  { transform: scale(0.98); }
+    #doneBtn:disabled {
+      background: var(--border);
+      color: var(--ink-3);
+      cursor: default;
+      opacity: 1;
+    }
+
+    /* ── Report section ── */
+    #reportSection {
+      display: none;
+      border-top: 1px solid var(--border);
+      padding: 28px 0;
+      background: var(--bg);
+    }
+    .report-eyebrow {
+      font-family: 'DM Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+      margin-bottom: 16px;
+    }
+
+    .pct-hero {
+      font-family: 'DM Serif Display', Georgia, serif;
+      font-size: clamp(40px, 6vw, 64px);
+      line-height: 1;
+      margin-bottom: 6px;
+    }
+    .pct-sub {
+      font-size: 15px;
+      color: var(--ink-2);
+      margin-bottom: 20px;
+      font-weight: 300;
+    }
+
+    .report-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+    }
+    .report-row:last-of-type { border-bottom: none; }
+    .report-row-label { color: var(--ink-2); font-weight: 300; }
+    .report-row-val   {
+      font-family: 'DM Mono', monospace;
+      font-size: 14px;
+    }
+
+    .distraction-list { margin-top: 20px; }
+    .distraction-title {
+      font-family: 'DM Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+      margin-bottom: 10px;
+    }
+    .distraction-item {
+      display: flex;
+      justify-content: space-between;
+      font-size: 14px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .distraction-item:last-child { border-bottom: none; }
+    .distraction-domain { color: var(--ink-2); font-weight: 300; }
+    .distraction-dur    { font-family: 'DM Mono', monospace; color: var(--warn); }
+
+    .tips-list { margin-top: 20px; }
+    .tips-title {
+      font-family: 'DM Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+      margin-bottom: 10px;
+    }
+    .tip {
+      font-size: 14px;
+      color: var(--ink-2);
+      font-weight: 300;
+      line-height: 1.6;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .tip:last-child { border-bottom: none; }
+
+    /* ── Options link ── */
+    .options-link {
+      display: block;
+      text-align: center;
+      padding: 18px;
+      font-family: 'DM Mono', monospace;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      color: var(--ink-3);
+      text-decoration: none;
+      border-top: 1px solid var(--border);
+      cursor: pointer;
+      transition: color 0.15s;
+      margin-top: auto;
+    }
+    .options-link:hover { color: var(--accent); }
+
+    /* Screen-reader only helper */
+    .sr-only {
+      position: absolute;
+      width: 1px; height: 1px;
+      padding: 0; margin: -1px;
+      overflow: hidden;
+      clip: rect(0,0,0,0);
+      border: 0;
+    }
+  </style>
+</head>
+<body>
+
+<div class="page-wrap">
+
+  <!-- Header -->
+  <div class="header">
+    <p class="eyebrow">Study Calendar</p>
+    <p class="app-title">Soft <em>Timer</em></p>
+  </div>
+
+  <!-- Status -->
+  <div class="status-wrap">
+    <span class="status-pill idle" id="statusPill" role="status" aria-live="polite">
+      <span class="status-dot" id="statusDot" aria-hidden="true"></span>
+      <span id="statusText">Checking…</span>
+    </span>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat-card">
+      <p class="stat-label">Study time</p>
+      <p class="stat-value study-val" id="studyTime" aria-live="polite">0s</p>
+    </div>
+    <div class="stat-card">
+      <p class="stat-label">Off-task</p>
+      <p class="stat-value dist-val" id="distractTime" aria-live="polite">0s</p>
+    </div>
+  </div>
+
+  <!-- Done button -->
+  <div class="btn-wrap">
+    <button id="doneBtn" aria-label="Done studying, generate session report">Done Studying — Get Report</button>
+  </div>
+
+  <!-- Report -->
+  <div id="reportSection">
+    <p class="report-eyebrow">Session Report</p>
+
+    <p class="pct-hero" id="pctHero">—</p>
+    <p class="pct-sub" id="pctSub"></p>
+
+    <div id="reportRows"></div>
+
+    <div class="distraction-list" id="distractionList" style="display:none">
+      <p class="distraction-title">Top distractions</p>
+      <div id="distractionItems"></div>
+    </div>
+
+    <div class="tips-list" id="tipsList" style="display:none">
+      <p class="tips-title">Recommendations</p>
+      <div id="tipsItems"></div>
+    </div>
+  </div>
+
+  <!-- Options link -->
+  <span class="options-link" id="optionsLink" role="button" tabindex="0" aria-label="Open settings and history">Settings &amp; history</span>
+
+</div>
+
+  <script src="utils.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="auth.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
