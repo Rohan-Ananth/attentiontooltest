@@ -1,4 +1,5 @@
-# TideTrack: Study Calendar — Soft Timer
+# TideTrack
+# Study Calendar — Soft Timer
 
 ## What it does
 A Chrome extension that tracks how productively you spend your study sessions.
