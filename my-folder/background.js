@@ -1,5 +1,3 @@
-importScripts('utils.js');
-
 let currentSession = null;
 let studyDayStart  = null;
 let startTimer     = null;
@@ -70,6 +68,16 @@ restoreState();
 
 // ─── Whitelist helpers ────────────────────────────────────────────────────────
 
+function extractHostname(url) {
+  try { return new URL(url).hostname.replace(/^www\./, ''); }
+  catch { return ''; }
+}
+
+function isInternalUrl(url) {
+  if (!url) return true;
+  return /^(chrome|chrome-extension|about|edge|brave|opera|vivaldi|file):/.test(url);
+}
+
 async function isWhitelisted(url) {
   if (!url) return false;
   const hostname = extractHostname(url);
@@ -77,10 +85,7 @@ async function isWhitelisted(url) {
   return new Promise((resolve) => {
     chrome.storage.local.get(['whitelist'], (result) => {
       const whitelist = result.whitelist || [];
-      resolve(whitelist.some(item => {
-        const normalizedItem = item.toLowerCase();
-        return hostname === normalizedItem || hostname.endsWith('.' + normalizedItem);
-      }));
+      resolve(whitelist.some(item => hostname === item || hostname.endsWith('.' + item)));
     });
   });
 }
@@ -151,10 +156,7 @@ async function endSegment() {
   chrome.runtime.sendMessage({ action: 'statusUpdate', status: 'idle' }).catch(() => {});
 }
 
-// ─── Tab monitoring (debounced) ──────────────────────────────────────────────
-
-let checkTabTimer = null;
-const CHECK_TAB_DEBOUNCE = 300; // ms
+// ─── Tab monitoring ───────────────────────────────────────────────────────────
 
 async function checkCurrentTab() {
   chrome.tabs.query({ active: true, lastFocusedWindow: true }, async (tabs) => {
@@ -177,18 +179,13 @@ async function checkCurrentTab() {
   });
 }
 
-function debouncedCheckCurrentTab() {
-  clearTimeout(checkTabTimer);
-  checkTabTimer = setTimeout(checkCurrentTab, CHECK_TAB_DEBOUNCE);
-}
-
-chrome.tabs.onActivated.addListener(debouncedCheckCurrentTab);
+chrome.tabs.onActivated.addListener(checkCurrentTab);
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  if (changeInfo.status === 'complete') debouncedCheckCurrentTab();
+  if (changeInfo.status === 'complete') checkCurrentTab();
 });
 chrome.windows.onFocusChanged.addListener((windowId) => {
   if (windowId === chrome.windows.WINDOW_ID_NONE) endSegment();
-  else debouncedCheckCurrentTab();
+  else checkCurrentTab();
 });
 
 chrome.idle.setDetectionInterval(IDLE_THRESHOLD);
@@ -205,10 +202,7 @@ async function generateReport() {
 
   return new Promise((resolve) => {
     chrome.storage.local.get(['segments'], (result) => {
-      const rawSegments     = ((result.segments || {})[dateKey]) || [];
-      const segments        = Array.isArray(rawSegments)
-        ? rawSegments.filter(s => validateSegment(s) !== null)
-        : [];
+      const segments        = (result.segments || {})[dateKey] || [];
       const studySegs       = segments.filter(s => s.type === 'study');
       const distractionSegs = segments.filter(s => s.type === 'distraction');
       const totalStudy      = studySegs.reduce((a, s) => a + s.duration, 0);
@@ -217,7 +211,7 @@ async function generateReport() {
 
       const byDomain = {};
       distractionSegs.forEach(s => {
-        const domain = extractHostname(s.url);
+        const domain = extractDomain(s.url);
         byDomain[domain] = (byDomain[domain] || 0) + s.duration;
       });
 
@@ -251,6 +245,11 @@ async function generateReport() {
   });
 }
 
+function extractDomain(url) {
+  try { return new URL(url).hostname.replace('www.', ''); }
+  catch { return url; }
+}
+
 function buildRecommendations(pct, byDomain, totalDistraction) {
   const tips = [];
 
@@ -273,6 +272,14 @@ function buildRecommendations(pct, byDomain, totalDistraction) {
   }
 
   return tips;
+}
+
+function formatDuration(seconds) {
+  if (seconds < 60) return `${seconds}s`;
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m ${seconds % 60}s`;
 }
 
 // ─── Message handler ──────────────────────────────────────────────────────────
@@ -313,5 +320,48 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
     studyDayStart = null;
     persistState();
+
+  } else if (message.action === 'askKai') {
+    // AI Study Coach — proxied through background to satisfy MV3 CSP
+    handleKaiRequest(message.systemPrompt, message.messages)
+      .then(data => sendResponse({ ok: true, data }))
+      .catch(err => sendResponse({ ok: false, error: err.message }));
+    return true; // async response
   }
 });
+
+// ─── AI Study Coach proxy ─────────────────────────────────────────────────────
+
+async function handleKaiRequest(systemPrompt, messages) {
+  const result = await chrome.storage.local.get(['anthropicApiKey']);
+  const apiKey = result.anthropicApiKey;
+
+  if (!apiKey) {
+    throw new Error('NO_API_KEY');
+  }
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1500,
+      temperature: 0.7,
+      system: systemPrompt,
+      messages: messages
+    })
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    const msg = errorData?.error?.message || `API returned ${response.status}`;
+    if (response.status === 401) throw new Error('INVALID_API_KEY');
+    throw new Error(msg);
+  }
+
+  return await response.json();
+}
