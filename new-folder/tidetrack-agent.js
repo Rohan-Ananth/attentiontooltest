@@ -4,16 +4,15 @@
  * A comprehensive AI agent that analyzes study patterns, provides
  * personalized coaching, and generates actionable study plans.
  *
- * Integrates with the TideTrack Chrome extension via chrome.storage
- * and the Anthropic API for intelligence.
+ * Integrates with the TideTrack Chrome extension via chrome.storage.
+ * All API calls are routed through background.js (service worker)
+ * to comply with MV3 CSP restrictions.
  *
  * ── SETUP ──────────────────────────────────────────────────────────────────
- * Replace ANTHROPIC_API_KEY with your key from console.anthropic.com
- * or use a backend proxy to keep the key secure.
+ * Add your Anthropic API key in the TideTrack settings page (options.html).
+ * The key is stored locally in chrome.storage — never shipped in code.
  */
 
-const ANTHROPIC_API_KEY = 'YOUR_ANTHROPIC_API_KEY';
-const AGENT_MODEL = 'claude-sonnet-4-20250514';
 const AGENT_VERSION = '1.0.0';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -527,31 +526,34 @@ Respond helpfully but note that you don't have access to their data right now.
       }
     ];
 
-    // Step 3: Call the Anthropic API
+    // Step 3: Route API call through background.js (MV3 CSP compliant)
     try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': ANTHROPIC_API_KEY,
-          'anthropic-version': '2023-06-01'
-        },
-        body: JSON.stringify({
-          model: AGENT_MODEL,
-          max_tokens: 1500,
-          temperature: temperature,
-          system: AGENT_SYSTEM_PROMPT,
+      const apiResponse = await new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({
+          action: 'askKai',
+          systemPrompt: AGENT_SYSTEM_PROMPT,
           messages: messages
-        })
+        }, (response) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+            return;
+          }
+          if (!response || !response.ok) {
+            const errMsg = response?.error || 'No response from background';
+            if (errMsg === 'NO_API_KEY') {
+              reject(new Error('NO_API_KEY'));
+            } else if (errMsg === 'INVALID_API_KEY') {
+              reject(new Error('INVALID_API_KEY'));
+            } else {
+              reject(new Error(errMsg));
+            }
+            return;
+          }
+          resolve(response.data);
+        });
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData?.error?.message || `API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-      const rawText = data.content
+      const rawText = apiResponse.content
         .filter(block => block.type === 'text')
         .map(block => block.text)
         .join('');
@@ -577,6 +579,19 @@ Respond helpfully but note that you don't have access to their data right now.
 
     } catch (err) {
       console.error('TideTrack Agent error:', err);
+
+      // Friendly error messages for common issues
+      if (err.message === 'NO_API_KEY') {
+        return this._errorResponse(
+          'No API key found. Add your Anthropic API key in TideTrack Settings → AI Study Coach to activate Kai.'
+        );
+      }
+      if (err.message === 'INVALID_API_KEY') {
+        return this._errorResponse(
+          'Your API key was rejected. Check that it\'s correct in TideTrack Settings → AI Study Coach.'
+        );
+      }
+
       return this._errorResponse(err.message);
     }
   },
