@@ -17,8 +17,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   const lightBtn           = document.getElementById('lightBtn');
   const darkBtn            = document.getElementById('darkBtn');
   const openTimerBtn       = document.getElementById('openTimerBtn');
-  const showMoreBtn        = document.getElementById('showMoreBtn');
-  const showMoreWrap       = document.getElementById('showMoreWrap');
 
   // Auth elements
   const authStatusEl       = document.getElementById('authStatus');
@@ -26,14 +24,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   const signOutBtn         = document.getElementById('signOutBtn');
   const signInLink         = document.getElementById('signInLink');
 
-  // History pagination
-  const HISTORY_PAGE_SIZE = 15;
-  let historyVisibleCount = HISTORY_PAGE_SIZE;
-
   // ── Auth check ──────────────────────────────────────────────────────────────
   async function checkAuth() {
     try {
-      const user = await TideTrackAuth.getCurrentUser();
+      const user = await StudyAuth.getCurrentUser();
       if (user) {
         authUserEl.textContent     = user.displayName || user.email;
         authStatusEl.style.display = 'inline';
@@ -50,7 +44,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   signOutBtn.addEventListener('click', async () => {
-    await TideTrackAuth.signOut();
+    await StudyAuth.signOut();
     authStatusEl.style.display = 'none';
     signInLink.style.display   = 'inline';
   });
@@ -58,7 +52,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   signInLink.addEventListener('click', (e) => {
     e.preventDefault();
     const loginUrl = chrome.runtime.getURL('login.html');
-    window.open(loginUrl, 'tidetrack-login', 'width=900,height=600');
+    window.open(loginUrl, 'study-login', 'width=900,height=600');
   });
 
   // Listen for successful auth from login window
@@ -71,8 +65,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── Feedback helper ─────────────────────────────────────────────────────────
   function showFeedback(pill, msg, isError = false) {
     pill.textContent      = msg;
-    pill.style.background = isError ? '#fdf0ee' : '#e0eefb';
-    pill.style.color      = isError ? '#c0392b' : '#2b7cd4';
+    pill.style.background = isError ? '#fdf0ee' : '#e8f5e2';
+    pill.style.color      = isError ? '#c0392b' : '#2d6a4f';
     pill.style.opacity    = '1';
     clearTimeout(pill._t);
     pill._t = setTimeout(() => { pill.style.opacity = '0'; }, 2000);
@@ -82,11 +76,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   function applyTheme(theme) {
     document.documentElement.setAttribute('data-theme', theme);
     themeLabel.textContent = theme === 'dark' ? 'Dark' : 'Light';
-    themeToggle.setAttribute('aria-checked', theme === 'dark' ? 'true' : 'false');
-    lightBtn.style.borderColor = theme === 'light' ? '#2b7cd4' : '';
-    lightBtn.style.color       = theme === 'light' ? '#2b7cd4' : '';
-    darkBtn.style.borderColor  = theme === 'dark'  ? '#5badee' : '';
-    darkBtn.style.color        = theme === 'dark'  ? '#5badee' : '';
+    lightBtn.style.borderColor = theme === 'light' ? '#2d6a4f' : '';
+    lightBtn.style.color       = theme === 'light' ? '#2d6a4f' : '';
+    darkBtn.style.borderColor  = theme === 'dark'  ? '#52b788' : '';
+    darkBtn.style.color        = theme === 'dark'  ? '#52b788' : '';
   }
 
   async function setTheme(theme) {
@@ -105,7 +98,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Opens popup.html as a small standalone window
   openTimerBtn.addEventListener('click', () => {
     const url = chrome.runtime.getURL('popup.html');
-    window.open(url, 'tidetrack-timer', 'width=700,height=600');
+    window.open(url, 'study-timer', 'width=700,height=600');
   });
 
   // ── Whitelist ───────────────────────────────────────────────────────────────
@@ -124,7 +117,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       item.className = 'wl-item';
       item.innerHTML = `
         <span class="wl-domain">${url}</span>
-        <button class="wl-remove" data-index="${index}" aria-label="Remove ${url}">Remove</button>
+        <button class="wl-remove" data-index="${index}">Remove</button>
       `;
       whitelistItemsDiv.appendChild(item);
     });
@@ -170,16 +163,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       const result   = await chrome.storage.local.get(['whitelist']);
       const whitelist = result.whitelist || [];
-      // Case-insensitive duplicate check
-      if (whitelist.some(w => w.toLowerCase() === domain)) {
-        showFeedback(feedbackPill, 'Already added');
-        return;
-      }
+      if (whitelist.includes(domain)) { showFeedback(feedbackPill, 'Already added'); return; }
 
       whitelist.push(domain);
       await chrome.storage.local.set({ whitelist });
       whitelistUrlInput.value = '';
-      showFeedback(feedbackPill, `Added ${domain}`);
+      showFeedback(feedbackPill, `Added ${domain} ✓`);
       await loadWhitelist();
     } catch (err) {
       showFeedback(feedbackPill, 'Error: ' + err.message, true);
@@ -202,25 +191,31 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   // ── Settings load / save ────────────────────────────────────────────────────
+  const apiKeyInput = document.getElementById('apiKeyInput');
+  const kaiStatus   = document.getElementById('kaiStatus');
+
   async function loadSettings() {
     const result = await chrome.storage.local.get([
       'graceperiod',
       'gracePeriod',
       'idleThreshold',
       'theme',
+      'anthropicApiKey',
     ]);
     const savedGrace = result.graceperiod ?? result.gracePeriod;
     if (savedGrace) graceInput.value = savedGrace;
     if (result.idleThreshold) idleInput.value = result.idleThreshold;
+    const theme = result.theme || 'light';
+    applyTheme(theme);
 
-    // Theme: explicit setting > system preference > light
-    const savedTheme = result.theme;
-    if (savedTheme) {
-      applyTheme(savedTheme);
-    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      applyTheme('dark');
+    // API key status
+    if (result.anthropicApiKey) {
+      apiKeyInput.value = result.anthropicApiKey;
+      kaiStatus.textContent = '✓ Kai is active';
+      kaiStatus.style.color = 'var(--accent)';
     } else {
-      applyTheme('light');
+      kaiStatus.textContent = 'Not configured';
+      kaiStatus.style.color = 'var(--ink-3)';
     }
   }
 
@@ -230,13 +225,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     graceInput.value = grace;
     idleInput.value  = idle;
 
-    await chrome.storage.local.set({ graceperiod: grace, idleThreshold: idle });
+    const saveData = { graceperiod: grace, idleThreshold: idle };
+
+    // Save API key if provided
+    const apiKey = apiKeyInput.value.trim();
+    if (apiKey) {
+      saveData.anthropicApiKey = apiKey;
+      kaiStatus.textContent = '✓ Kai is active';
+      kaiStatus.style.color = 'var(--accent)';
+    } else {
+      kaiStatus.textContent = 'Not configured';
+      kaiStatus.style.color = 'var(--ink-3)';
+    }
+
+    await chrome.storage.local.set(saveData);
 
     // Tell background.js to pick up the new values
     chrome.runtime.sendMessage({ action: 'updateSettings', graceperiod: grace, idleThreshold: idle })
       .catch(() => {}); // background may not be awake yet — that's fine, it reads on next start
 
-    showFeedback(settingsFeedback, 'Saved');
+    showFeedback(settingsFeedback, 'Saved ✓');
   });
 
   // ── Data management ─────────────────────────────────────────────────────────
@@ -246,9 +254,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const lines = [['date', 'type', 'start', 'end', 'duration_s', 'url']];
 
     Object.entries(segsByDate).sort().forEach(([date, segs]) => {
-      if (!Array.isArray(segs)) return;
       segs.forEach(s => {
-        if (!validateSegment(s)) return;
         lines.push([
           date,
           s.type,
@@ -292,7 +298,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     showFeedback(settingsFeedback, 'All history cleared');
   });
 
-  // ── History table with expandable rows & pagination ─────────────────────────
+  // ── History table with expandable rows ─────────────────────────────────────
   async function loadReports() {
     const result = await chrome.storage.local.get(['segments']);
     const segsByDate = result.segments || {};
@@ -312,42 +318,30 @@ document.addEventListener('DOMContentLoaded', async () => {
           No sessions recorded yet. Start studying to see your history here.
         </td></tr>`;
       table.appendChild(emptyBody);
-      showMoreWrap.style.display = 'none';
       return;
     }
 
-    const visibleDates = dates.slice(0, historyVisibleCount);
-
-    visibleDates.forEach((date, index) => {
-      const rawSegs = segsByDate[date];
-      const segs = Array.isArray(rawSegs)
-        ? rawSegs.filter(s => validateSegment(s) !== null)
-        : [];
-      if (segs.length === 0) return;
-
+    dates.forEach((date, index) => {
+      const segs = segsByDate[date];
       const studySegs = segs.filter(s => s.type === 'study');
       const distSegs  = segs.filter(s => s.type === 'distraction');
       const totalStudy = studySegs.reduce((a, s) => a + s.duration, 0);
       const totalDist  = distSegs.reduce((a, s) => a + s.duration, 0);
       const total = totalStudy + totalDist;
       const pct   = total > 0 ? Math.round((totalStudy / total) * 100) : 0;
-      const color = pct >= 70 ? '#2b7cd4' : pct >= 40 ? '#d97706' : '#c0392b';
+      const color = pct >= 70 ? '#2d6a4f' : pct >= 40 ? '#d97706' : '#c0392b';
 
       // tbody for the summary row
       const summaryBody = document.createElement('tbody');
       if (index === 0) summaryBody.id = 'reportContent';
       const summaryRow  = document.createElement('tr');
       summaryRow.className = 'summary-row';
-      summaryRow.setAttribute('tabindex', '0');
-      summaryRow.setAttribute('role', 'button');
-      summaryRow.setAttribute('aria-expanded', 'false');
-      summaryRow.setAttribute('aria-label', `${date}: ${formatDuration(totalStudy)} study, ${pct}% focus. Click to expand.`);
       summaryRow.innerHTML = `
         <td class="date-cell">
-          <span class="expand-icon" aria-hidden="true">&#9654;</span>${date}
+          <span class="expand-icon">▶</span>${date}
         </td>
-        <td class="dur-study">${formatDuration(totalStudy)}</td>
-        <td class="dur-dist">${totalDist > 0 ? formatDuration(totalDist) : '—'}</td>
+        <td class="dur-study">${fmt(totalStudy)}</td>
+        <td class="dur-dist">${totalDist > 0 ? fmt(totalDist) : '—'}</td>
         <td>
           <div class="pct-wrap">
             <div class="pct-bar-bg">
@@ -371,41 +365,34 @@ document.addEventListener('DOMContentLoaded', async () => {
         const start = new Date(s.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         const end   = new Date(s.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         const typeClass = s.type === 'study' ? 'seg-study' : 'seg-dist';
-        const domain = extractHostname(s.url) || s.url;
+        const domain = (() => { try { return new URL(s.url).hostname.replace('www.',''); } catch { return s.url; } })();
         segRow.innerHTML = `
           <td class="${typeClass}">${s.type}</td>
           <td>${start} – ${end}</td>
-          <td>${formatDuration(s.duration)}</td>
+          <td>${fmt(s.duration)}</td>
           <td colspan="2" style="color:var(--ink-3);font-size:11px">${domain}</td>
         `;
         detailBody.appendChild(segRow);
       });
       table.appendChild(detailBody);
 
-      // Toggle expand on summary row click or keyboard
-      function toggleExpand() {
+      // Toggle expand on summary row click
+      summaryRow.addEventListener('click', () => {
         const open = detailBody.classList.toggle('open');
         summaryRow.querySelector('.date-cell').classList.toggle('open', open);
-        summaryRow.setAttribute('aria-expanded', open ? 'true' : 'false');
-      }
-      summaryRow.addEventListener('click', toggleExpand);
-      summaryRow.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleExpand(); }
       });
     });
-
-    // Show/hide "Show more" button
-    if (dates.length > historyVisibleCount) {
-      showMoreWrap.style.display = 'block';
-    } else {
-      showMoreWrap.style.display = 'none';
-    }
   }
 
-  showMoreBtn.addEventListener('click', () => {
-    historyVisibleCount += HISTORY_PAGE_SIZE;
-    loadReports();
-  });
+  function fmt(seconds) {
+    if (!seconds || seconds < 1) return '0s';
+    if (seconds < 60) return `${seconds}s`;
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    if (h > 0) return `${h}h ${m}m`;
+    return `${m}m ${s}s`;
+  }
 
   // ── Streak & Weekly Summary ──────────────────────────────────────────────────
   async function loadStreakAndWeekly() {
@@ -483,8 +470,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const weekDayStudy = [];
 
     weekDays.forEach(dk => {
-      const rawSegs = segsByDate[dk] || [];
-      const segs = Array.isArray(rawSegs) ? rawSegs.filter(s => validateSegment(s) !== null) : [];
+      const segs = segsByDate[dk] || [];
       const study = segs.filter(s => s.type === 'study').reduce((a, s) => a + s.duration, 0);
       const dist  = segs.filter(s => s.type === 'distraction').reduce((a, s) => a + s.duration, 0);
       weekStudyTotal += study;
@@ -496,7 +482,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const weekTotal   = weekStudyTotal + weekDistTotal;
     const weekAvgPct  = weekTotal > 0 ? Math.round((weekStudyTotal / weekTotal) * 100) : 0;
 
-    document.getElementById('weekStudy').textContent = formatDuration(weekStudyTotal);
+    document.getElementById('weekStudy').textContent = fmt(weekStudyTotal);
     document.getElementById('weekAvgFocus').textContent = weekAvgPct + '%';
 
     // ── Heatmap ─────────────────────────────────────────────────────────────
