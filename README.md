@@ -87,3 +87,11 @@ pip install flask opencv-python numpy
 ```
 
 Use the draggable horizontal rectangle band to set the nose zone. If the nose leaves the band or the user turns away, the tracking box turns red.
+
+### Bugs
+
+- Race condition in checkCurrentTab (line 179): endSegment() is async but not awaited — attemptStartSegment runs before currentSession is cleared
+- Full URL comparison (line 178): comparing currentSession.url !== tab.url means navigating within the same domain (e.g., two Google Docs pages) creates spurious segment transitions
+- No segment validation on save — corrupted data can accumulate
+- Popup polls excessively — updateUI() every 1s does both a chrome.storage.local.get AND chrome.runtime.sendMessage
+- No camera bridge — Flask app has no /status endpoint for the extension to poll
