@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head><title>TideTrack Audio</title></head>
+<body>
+<script>
+  // Offscreen document for playing session start/end sounds.
+  // MV3 service workers can't play audio directly — this handles it.
+
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+
+  function playTone(frequency, duration, type = 'sine', volume = 0.15) {
+    const ctx = new AudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = type;
+    osc.frequency.setValueAtTime(frequency, ctx.currentTime);
+
+    gain.gain.setValueAtTime(volume, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start();
+    osc.stop(ctx.currentTime + duration);
+
+    // Clean up
+    setTimeout(() => ctx.close(), (duration + 0.1) * 1000);
+  }
+
+  function playStudyStart() {
+    // Gentle ascending two-tone chime — signals focus mode
+    playTone(523, 0.15, 'sine', 0.12);  // C5
+    setTimeout(() => playTone(659, 0.25, 'sine', 0.12), 120); // E5
+  }
+
+  function playDistractionStart() {
+    // Soft single low tone — subtle "heads up"
+    playTone(330, 0.2, 'triangle', 0.08); // E4
+  }
+
+  chrome.runtime.onMessage.addListener((message) => {
+    if (message.action === 'playSound') {
+      if (message.type === 'study') {
+        playStudyStart();
+      } else if (message.type === 'distraction') {
+        playDistractionStart();
+      }
+    }
+  });
+</script>
+</body>
+</html>
