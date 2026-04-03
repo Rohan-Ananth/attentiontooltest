@@ -1,0 +1,1189 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TideTrack — Tide Loop</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    /* ── Theme variables ─────────────────────────────────────────────── */
+    :root {
+      --bg:        #0c1a2a;
+      --surface:   #132233;
+      --surface-2: #1a2d42;
+      --ink:       #e4ecf4;
+      --ink-2:     #8ea3b8;
+      --ink-3:     #4a6478;
+      --accent:    #5badee;
+      --accent-2:  #0f2640;
+      --accent-glow: rgba(91,173,238,0.25);
+      --warn:      #e57373;
+      --warn-2:    #2d1212;
+      --amber:     #f59e0b;
+      --green:     #34d399;
+      --green-2:   #064e3b;
+      --border:    #1e3450;
+      --shadow:    rgba(0,0,0,0.3);
+
+      --ocean-deep:    #0a1628;
+      --ocean-mid:     #0d2847;
+      --ocean-surface: #134b7a;
+      --ocean-crest:   #1a6fb5;
+      --foam:          rgba(200,228,255,0.35);
+
+      --glass-bg:    rgba(19,34,51,0.65);
+      --glass-border: rgba(91,173,238,0.12);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'DM Sans', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
+      font-size: 15px;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* ── Layout ──────────────────────────────────────────────────────── */
+    .app-container {
+      max-width: 560px;
+      margin: 0 auto;
+      padding: 0 20px 100px;
+      position: relative;
+      min-height: 100vh;
+    }
+
+    /* ── Screens ─────────────────────────────────────────────────────── */
+    .screen {
+      display: none;
+      opacity: 0;
+      transform: translateX(20px);
+      transition: opacity 0.35s ease, transform 0.35s ease;
+    }
+    .screen.active {
+      display: block;
+    }
+    .screen.visible {
+      opacity: 1;
+      transform: translateX(0);
+    }
+    .screen.slide-out {
+      opacity: 0;
+      transform: translateX(-20px);
+    }
+
+    /* ── Header ──────────────────────────────────────────────────────── */
+    .header {
+      padding: 28px 0 20px;
+      text-align: center;
+    }
+    .header-title {
+      font-family: 'DM Serif Display', Georgia, serif;
+      font-size: 28px;
+      color: var(--ink);
+      line-height: 1.1;
+    }
+    .header-title em { font-style: italic; color: var(--accent); }
+    .header-sub {
+      font-family: 'DM Mono', monospace;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      color: var(--ink-3);
+      margin-top: 6px;
+    }
+
+    /* ── Glassmorphism card ───────────────────────────────────────────── */
+    .glass-card {
+      background: var(--glass-bg);
+      backdrop-filter: blur(16px) saturate(1.3);
+      -webkit-backdrop-filter: blur(16px) saturate(1.3);
+      border: 1px solid var(--glass-border);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 16px;
+      position: relative;
+      overflow: hidden;
+    }
+    .glass-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(91,173,238,0.2), transparent);
+    }
+
+    /* ── Eyebrow label ───────────────────────────────────────────────── */
+    .eyebrow {
+      font-family: 'DM Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+      margin-bottom: 8px;
+    }
+
+    /* ── Buttons ──────────────────────────────────────────────────────── */
+    .btn-primary {
+      width: 100%;
+      padding: 14px 24px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      font-family: 'DM Sans', system-ui, sans-serif;
+      font-size: 15px;
+      font-weight: 600;
+      transition: opacity 0.15s, transform 0.1s, box-shadow 0.2s;
+      box-shadow: 0 4px 20px rgba(91,173,238,0.3);
+    }
+    .btn-primary:hover { opacity: 0.9; }
+    .btn-primary:active { transform: scale(0.98); }
+    .btn-primary:disabled {
+      background: var(--border);
+      color: var(--ink-3);
+      cursor: default;
+      box-shadow: none;
+    }
+
+    .btn-secondary {
+      width: 100%;
+      padding: 12px 24px;
+      background: var(--surface-2);
+      color: var(--ink-2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      cursor: pointer;
+      font-family: 'DM Sans', system-ui, sans-serif;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.15s;
+    }
+    .btn-secondary:hover { background: var(--accent-2); color: var(--accent); border-color: var(--accent); }
+
+    .btn-green {
+      background: var(--green);
+      color: #fff;
+      box-shadow: 0 4px 20px rgba(52,211,153,0.3);
+    }
+    .btn-green:hover { opacity: 0.9; }
+
+    .btn-warn {
+      background: var(--warn);
+      box-shadow: 0 4px 20px rgba(229,115,115,0.3);
+    }
+
+    /* ── Input fields ────────────────────────────────────────────────── */
+    .input-field {
+      width: 100%;
+      padding: 12px 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--ink);
+      font-family: 'DM Sans', system-ui, sans-serif;
+      font-size: 15px;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .input-field:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+    .input-field::placeholder { color: var(--ink-3); }
+
+    textarea.input-field {
+      min-height: 140px;
+      resize: vertical;
+      line-height: 1.6;
+    }
+
+    .input-hint {
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      color: var(--ink-3);
+      margin-top: 8px;
+      letter-spacing: 0.03em;
+    }
+
+    /* ── Wave decoration ─────────────────────────────────────────────── */
+    .wave-bg {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      height: 200px;
+      pointer-events: none;
+      z-index: 0;
+      overflow: hidden;
+    }
+    .wave-bg svg {
+      position: absolute;
+      bottom: 0;
+      width: 200%;
+      height: 100%;
+    }
+    .wave-bg .wave-1 { animation: waveSlide 12s linear infinite; opacity: 0.06; }
+    .wave-bg .wave-2 { animation: waveSlide 18s linear infinite reverse; opacity: 0.04; }
+
+    @keyframes waveSlide {
+      from { transform: translateX(0); }
+      to { transform: translateX(-50%); }
+    }
+
+    /* ── Particle dots ───────────────────────────────────────────────── */
+    .particles {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      overflow: hidden;
+    }
+    .particle {
+      position: absolute;
+      width: 2px; height: 2px;
+      background: var(--accent);
+      border-radius: 50%;
+      opacity: 0;
+      animation: particleFloat var(--dur, 8s) ease-in-out infinite;
+      animation-delay: var(--delay, 0s);
+    }
+    @keyframes particleFloat {
+      0%   { opacity: 0; transform: translateY(0) scale(1); }
+      20%  { opacity: 0.4; }
+      80%  { opacity: 0.2; }
+      100% { opacity: 0; transform: translateY(-120px) scale(0.5); }
+    }
+
+    /* ══════════════════════════════════════════════════════════════════
+       SCREEN 1 — TIDE FEED (HOME)
+       ══════════════════════════════════════════════════════════════════ */
+
+    .weak-topic-card {
+      text-align: center;
+      padding: 28px 20px;
+    }
+    .weak-topic-label {
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--warn);
+      margin-bottom: 8px;
+    }
+    .weak-topic-name {
+      font-family: 'DM Serif Display', Georgia, serif;
+      font-size: 24px;
+      color: var(--ink);
+      margin-bottom: 4px;
+    }
+    .weak-topic-detail {
+      font-size: 13px;
+      color: var(--ink-2);
+      margin-bottom: 20px;
+    }
+    .weak-topic-score {
+      font-family: 'DM Mono', monospace;
+      font-size: 36px;
+      font-weight: 400;
+      color: var(--warn);
+      margin-bottom: 16px;
+    }
+    .weak-topic-score span {
+      font-size: 16px;
+      color: var(--ink-3);
+    }
+
+    /* Momentum ring */
+    .momentum-wrap {
+      display: flex;
+      justify-content: center;
+      padding: 16px 0;
+    }
+    .momentum-ring-container {
+      position: relative;
+      width: 120px;
+      height: 120px;
+    }
+    .momentum-ring-container svg {
+      transform: rotate(-90deg);
+      width: 120px;
+      height: 120px;
+    }
+    .momentum-ring-bg {
+      fill: none;
+      stroke: var(--border);
+      stroke-width: 6;
+    }
+    .momentum-ring-fill {
+      fill: none;
+      stroke-width: 6;
+      stroke-linecap: round;
+      transition: stroke-dashoffset 1s ease;
+    }
+    .momentum-ring-text {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .momentum-value {
+      font-family: 'DM Mono', monospace;
+      font-size: 28px;
+      font-weight: 400;
+      color: var(--accent);
+      line-height: 1;
+    }
+    .momentum-label {
+      font-family: 'DM Mono', monospace;
+      font-size: 9px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+      margin-top: 4px;
+    }
+
+    /* Gradient ring animation */
+    @keyframes ringGradientRotate {
+      from { transform: rotate(-90deg); }
+      to { transform: rotate(270deg); }
+    }
+
+    /* Recent progress */
+    .recent-list { list-style: none; }
+    .recent-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+    }
+    .recent-item:last-child { border-bottom: none; }
+    .recent-topic { color: var(--ink); font-weight: 500; }
+    .recent-score {
+      font-family: 'DM Mono', monospace;
+      font-size: 13px;
+    }
+    .recent-score.low { color: var(--warn); }
+    .recent-score.mid { color: var(--amber); }
+    .recent-score.high { color: var(--green); }
+
+    /* ══════════════════════════════════════════════════════════════════
+       SCREEN 2 — EXPLAIN (INPUT)
+       ══════════════════════════════════════════════════════════════════ */
+    .explain-prompt {
+      font-family: 'DM Serif Display', Georgia, serif;
+      font-size: 22px;
+      color: var(--ink);
+      margin-bottom: 20px;
+      line-height: 1.3;
+    }
+    .field-group {
+      margin-bottom: 16px;
+    }
+    .field-label {
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+      margin-bottom: 6px;
+      display: block;
+    }
+
+    /* ══════════════════════════════════════════════════════════════════
+       SCREEN 3 — AI FEEDBACK (DETECTION)
+       ══════════════════════════════════════════════════════════════════ */
+    .loading-wrap {
+      text-align: center;
+      padding: 40px 0;
+    }
+    .loading-spinner {
+      width: 48px; height: 48px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      margin: 0 auto 16px;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-text {
+      font-family: 'DM Mono', monospace;
+      font-size: 13px;
+      color: var(--ink-3);
+      letter-spacing: 0.05em;
+    }
+
+    .feedback-summary {
+      font-family: 'DM Serif Display', Georgia, serif;
+      font-size: 20px;
+      color: var(--ink);
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    .confidence-bar-wrap {
+      margin: 20px 0;
+    }
+    .confidence-bar-bg {
+      height: 10px;
+      background: var(--border);
+      border-radius: 99px;
+      overflow: hidden;
+    }
+    .confidence-bar-fill {
+      height: 100%;
+      border-radius: 99px;
+      transition: width 1s ease;
+      min-width: 0;
+    }
+    .confidence-bar-fill.low { background: var(--warn); }
+    .confidence-bar-fill.mid { background: var(--amber); }
+    .confidence-bar-fill.high { background: var(--green); }
+
+    .confidence-value {
+      text-align: center;
+      font-family: 'DM Mono', monospace;
+      font-size: 32px;
+      margin: 8px 0 4px;
+    }
+    .confidence-label {
+      text-align: center;
+      font-family: 'DM Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+    }
+
+    .gap-list {
+      list-style: none;
+      margin: 12px 0;
+    }
+    .gap-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 8px 0;
+      font-size: 14px;
+      color: var(--ink-2);
+    }
+    .gap-icon {
+      flex-shrink: 0;
+      width: 20px; height: 20px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      margin-top: 2px;
+    }
+    .gap-icon.missing { background: var(--warn-2); color: var(--warn); }
+    .gap-icon.unclear { background: rgba(249,115,22,0.15); color: var(--amber); }
+    .gap-icon.correct { background: var(--green-2); color: var(--green); }
+
+    /* ══════════════════════════════════════════════════════════════════
+       SCREEN 4 — FIX SESSION (CORE)
+       ══════════════════════════════════════════════════════════════════ */
+    .timer-wrap {
+      display: flex;
+      justify-content: center;
+      padding: 20px 0;
+    }
+    .timer-ring-container {
+      position: relative;
+      width: 160px;
+      height: 160px;
+    }
+    .timer-ring-container svg {
+      transform: rotate(-90deg);
+      width: 160px;
+      height: 160px;
+    }
+    .timer-ring-bg {
+      fill: none;
+      stroke: var(--border);
+      stroke-width: 5;
+    }
+    .timer-ring-fill {
+      fill: none;
+      stroke: var(--accent);
+      stroke-width: 5;
+      stroke-linecap: round;
+      transition: stroke-dashoffset 1s linear;
+    }
+    .timer-text {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .timer-digits {
+      font-family: 'DM Mono', monospace;
+      font-size: 38px;
+      font-weight: 400;
+      color: var(--ink);
+      line-height: 1;
+    }
+    .timer-label {
+      font-family: 'DM Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+      margin-top: 4px;
+    }
+
+    .fix-session-card {
+      transition: box-shadow 0.3s;
+    }
+    .fix-session-card.pulsing {
+      animation: pulseGlow 2s ease-in-out infinite;
+    }
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(91,173,238,0); }
+      50% { box-shadow: 0 0 24px 4px rgba(91,173,238,0.15); }
+    }
+
+    .fix-step {
+      margin-bottom: 20px;
+    }
+    .fix-step-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .fix-step-num {
+      width: 24px; height: 24px;
+      border-radius: 50%;
+      background: var(--accent-2);
+      color: var(--accent);
+      font-family: 'DM Mono', monospace;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .fix-step-title {
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+    }
+    .fix-step-content {
+      font-size: 14px;
+      color: var(--ink-2);
+      line-height: 1.7;
+      padding-left: 32px;
+    }
+    .fix-step-content strong {
+      color: var(--ink);
+      font-weight: 500;
+    }
+
+    .answer-input-wrap {
+      padding-left: 32px;
+      margin-top: 8px;
+    }
+
+    /* ══════════════════════════════════════════════════════════════════
+       SCREEN 5 — FEEDBACK LOOP
+       ══════════════════════════════════════════════════════════════════ */
+    .result-icon-wrap {
+      text-align: center;
+      margin: 24px 0 16px;
+    }
+    .result-icon {
+      width: 80px; height: 80px;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 36px;
+    }
+    .result-icon.success {
+      background: var(--green-2);
+      color: var(--green);
+      animation: popIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .result-icon.fail {
+      background: var(--warn-2);
+      color: var(--warn);
+      animation: popIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    @keyframes popIn {
+      0% { transform: scale(0); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    .result-text {
+      text-align: center;
+      font-family: 'DM Serif Display', Georgia, serif;
+      font-size: 22px;
+      color: var(--ink);
+      margin-bottom: 8px;
+    }
+    .result-sub {
+      text-align: center;
+      font-size: 14px;
+      color: var(--ink-2);
+      margin-bottom: 24px;
+    }
+
+    /* Confetti */
+    .confetti-container {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 999;
+      overflow: hidden;
+    }
+    .confetti-piece {
+      position: absolute;
+      width: 8px; height: 8px;
+      border-radius: 2px;
+      top: -10px;
+      animation: confettiFall var(--fall-dur, 3s) ease-in forwards;
+      animation-delay: var(--fall-delay, 0s);
+    }
+    @keyframes confettiFall {
+      0%   { transform: translateY(0) rotate(0deg); opacity: 1; }
+      100% { transform: translateY(110vh) rotate(720deg); opacity: 0; }
+    }
+
+    /* ══════════════════════════════════════════════════════════════════
+       SCREEN 6 — PROGRESS
+       ══════════════════════════════════════════════════════════════════ */
+    .progress-stat-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .progress-stat {
+      background: var(--glass-bg);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--glass-border);
+      border-radius: 12px;
+      padding: 16px;
+      text-align: center;
+    }
+    .progress-stat-value {
+      font-family: 'DM Mono', monospace;
+      font-size: 28px;
+      color: var(--accent);
+      line-height: 1;
+    }
+    .progress-stat-label {
+      font-family: 'DM Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+      margin-top: 6px;
+    }
+
+    .mastered-list, .weak-list {
+      list-style: none;
+    }
+    .mastered-item, .weak-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .mastered-item:last-child, .weak-item:last-child { border-bottom: none; }
+    .mastered-name, .weak-name {
+      flex: 1;
+      font-size: 14px;
+      color: var(--ink);
+      font-weight: 500;
+    }
+    .mastered-bar-bg, .weak-bar-bg {
+      width: 80px;
+      height: 6px;
+      background: var(--border);
+      border-radius: 99px;
+      overflow: hidden;
+    }
+    .mastered-bar-fill {
+      height: 100%;
+      border-radius: 99px;
+      background: var(--green);
+      transition: width 0.6s ease;
+    }
+    .weak-bar-fill {
+      height: 100%;
+      border-radius: 99px;
+      background: var(--warn);
+      transition: width 0.6s ease;
+    }
+    .mastered-pct, .weak-pct {
+      font-family: 'DM Mono', monospace;
+      font-size: 12px;
+      color: var(--ink-3);
+      width: 36px;
+      text-align: right;
+    }
+
+    /* Weekly chart */
+    .weekly-chart {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 6px;
+      height: 100px;
+      padding-top: 12px;
+    }
+    .chart-bar-wrap {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+    .chart-bar {
+      width: 100%;
+      max-width: 32px;
+      border-radius: 6px 6px 2px 2px;
+      background: var(--accent);
+      transition: height 0.6s ease;
+      min-height: 2px;
+    }
+    .chart-day {
+      font-family: 'DM Mono', monospace;
+      font-size: 10px;
+      color: var(--ink-3);
+    }
+
+    /* ══════════════════════════════════════════════════════════════════
+       BOTTOM NAV
+       ══════════════════════════════════════════════════════════════════ */
+    .bottom-nav {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      background: rgba(12,26,42,0.92);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-around;
+      padding: 10px 0 env(safe-area-inset-bottom, 10px);
+      z-index: 100;
+    }
+    .nav-tab {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 6px 16px;
+      color: var(--ink-3);
+      transition: color 0.2s;
+      font-family: 'DM Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.05em;
+    }
+    .nav-tab.active { color: var(--accent); }
+    .nav-tab:hover { color: var(--ink-2); }
+    .nav-tab svg {
+      width: 20px; height: 20px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    /* ── Empty state ─────────────────────────────────────────────────── */
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+    }
+    .empty-icon {
+      font-size: 40px;
+      margin-bottom: 12px;
+      opacity: 0.5;
+    }
+    .empty-text {
+      font-size: 14px;
+      color: var(--ink-3);
+      margin-bottom: 16px;
+    }
+
+    /* ── Utility ─────────────────────────────────────────────────────── */
+    .mb-12 { margin-bottom: 12px; }
+    .mb-16 { margin-bottom: 16px; }
+    .mb-20 { margin-bottom: 20px; }
+    .mb-24 { margin-bottom: 24px; }
+    .mt-12 { margin-top: 12px; }
+    .mt-16 { margin-top: 16px; }
+    .text-center { text-align: center; }
+    .gap-8 { gap: 8px; }
+
+    .section-title {
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+      margin-bottom: 12px;
+    }
+
+    .error-text {
+      color: var(--warn);
+      font-size: 13px;
+      text-align: center;
+      padding: 12px;
+    }
+
+    /* Animated gradient ring for momentum */
+    .momentum-gradient {
+      stroke: url(#momentumGradient);
+    }
+
+    /* Back button */
+    .back-btn {
+      background: none;
+      border: none;
+      color: var(--ink-3);
+      cursor: pointer;
+      font-family: 'DM Mono', monospace;
+      font-size: 12px;
+      letter-spacing: 0.05em;
+      padding: 8px 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: color 0.2s;
+    }
+    .back-btn:hover { color: var(--accent); }
+    .back-btn svg {
+      width: 16px; height: 16px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Particles background -->
+  <div class="particles" id="particles"></div>
+
+  <!-- Wave decoration -->
+  <div class="wave-bg">
+    <svg class="wave-1" viewBox="0 0 1440 200" preserveAspectRatio="none">
+      <path d="M0,120 C360,60 720,180 1080,100 C1260,60 1380,140 1440,120 L1440,200 L0,200Z" fill="var(--accent)"/>
+    </svg>
+    <svg class="wave-2" viewBox="0 0 1440 200" preserveAspectRatio="none">
+      <path d="M0,140 C240,180 480,80 720,140 C960,200 1200,100 1440,160 L1440,200 L0,200Z" fill="var(--accent)"/>
+    </svg>
+  </div>
+
+  <!-- SVG gradient definition for momentum ring -->
+  <svg width="0" height="0" style="position:absolute">
+    <defs>
+      <linearGradient id="momentumGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#5badee"/>
+        <stop offset="50%" stop-color="#34d399"/>
+        <stop offset="100%" stop-color="#f59e0b"/>
+      </linearGradient>
+    </defs>
+  </svg>
+
+  <div class="app-container" style="position:relative; z-index:1;">
+
+    <!-- ═══════════════ SCREEN: FEED ═══════════════ -->
+    <div class="screen active" id="screen-feed">
+      <div class="header">
+        <div class="header-title">Tide<em>Track</em></div>
+        <p class="header-sub">Let's fix one thing in 5 minutes</p>
+      </div>
+
+      <!-- Weakest concept card -->
+      <div class="glass-card weak-topic-card" id="weakTopicCard" style="display:none;">
+        <p class="weak-topic-label">You're weak in</p>
+        <p class="weak-topic-name" id="weakTopicName">--</p>
+        <p class="weak-topic-score" id="weakTopicScore">--<span>%</span></p>
+        <p class="weak-topic-detail" id="weakTopicDetail"></p>
+        <button class="btn-primary" id="fixNowBtn">Fix This Now (5 min)</button>
+      </div>
+
+      <!-- Empty state when no topics -->
+      <div id="feedEmpty" class="empty-state">
+        <div class="empty-icon">&#127754;</div>
+        <p class="empty-text">No topics yet. Start by explaining something you just studied.</p>
+      </div>
+
+      <!-- Momentum -->
+      <div class="glass-card">
+        <p class="eyebrow">Momentum Score</p>
+        <div class="momentum-wrap">
+          <div class="momentum-ring-container">
+            <svg viewBox="0 0 120 120">
+              <circle class="momentum-ring-bg" cx="60" cy="60" r="50"/>
+              <circle class="momentum-ring-fill momentum-gradient" id="momentumCircle" cx="60" cy="60" r="50"/>
+            </svg>
+            <div class="momentum-ring-text">
+              <span class="momentum-value" id="momentumValue">0</span>
+              <span class="momentum-label">Momentum</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent progress -->
+      <div class="glass-card" id="recentCard" style="display:none;">
+        <p class="eyebrow">Recent Progress</p>
+        <ul class="recent-list" id="recentList"></ul>
+      </div>
+
+      <button class="btn-secondary mt-16 mb-24" id="startNewBtn">Start New Topic</button>
+    </div>
+
+    <!-- ═══════════════ SCREEN: EXPLAIN ═══════════════ -->
+    <div class="screen" id="screen-explain">
+      <div class="header" style="text-align:left;">
+        <button class="back-btn" id="explainBackBtn">
+          <svg viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+          Back
+        </button>
+      </div>
+
+      <p class="explain-prompt">What did you just study?</p>
+
+      <div class="field-group">
+        <label class="field-label" for="topicInput">Topic</label>
+        <input type="text" class="input-field" id="topicInput" placeholder="e.g. Derivatives, Photosynthesis, React Hooks..." />
+      </div>
+
+      <div class="field-group">
+        <label class="field-label" for="explanationInput">Explain this concept in your own words</label>
+        <textarea class="input-field" id="explanationInput" placeholder="Try explaining like you're teaching a friend..."></textarea>
+        <p class="input-hint">The more you write, the better the analysis</p>
+      </div>
+
+      <button class="btn-primary mt-16" id="analyzeBtn" disabled>Analyze My Understanding</button>
+    </div>
+
+    <!-- ═══════════════ SCREEN: AI FEEDBACK ═══════════════ -->
+    <div class="screen" id="screen-feedback">
+      <div class="header" style="text-align:left;">
+        <button class="back-btn" id="feedbackBackBtn">
+          <svg viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+          Back
+        </button>
+      </div>
+
+      <!-- Loading state -->
+      <div id="feedbackLoading" class="loading-wrap">
+        <div class="loading-spinner"></div>
+        <p class="loading-text">Analyzing your understanding...</p>
+      </div>
+
+      <!-- Results -->
+      <div id="feedbackResults" style="display:none;">
+        <p class="feedback-summary" id="feedbackSummary"></p>
+
+        <div class="confidence-bar-wrap">
+          <div class="confidence-value" id="confidenceValue">0%</div>
+          <div class="confidence-bar-bg">
+            <div class="confidence-bar-fill" id="confidenceBar" style="width:0%"></div>
+          </div>
+          <p class="confidence-label">Understanding Score</p>
+        </div>
+
+        <!-- Correct -->
+        <div class="glass-card" id="correctSection" style="display:none;">
+          <p class="eyebrow">What you got right</p>
+          <ul class="gap-list" id="correctList"></ul>
+        </div>
+
+        <!-- Missing -->
+        <div class="glass-card" id="missingSection" style="display:none;">
+          <p class="eyebrow">Gaps in understanding</p>
+          <ul class="gap-list" id="missingList"></ul>
+        </div>
+
+        <!-- Misconceptions -->
+        <div class="glass-card" id="misconceptionsSection" style="display:none;">
+          <p class="eyebrow">Possible misconceptions</p>
+          <ul class="gap-list" id="misconceptionsList"></ul>
+        </div>
+
+        <button class="btn-primary btn-warn mt-16" id="startFixBtn">Start 5-Minute Fix</button>
+      </div>
+
+      <!-- Error -->
+      <p class="error-text" id="feedbackError" style="display:none;"></p>
+    </div>
+
+    <!-- ═══════════════ SCREEN: FIX SESSION ═══════════════ -->
+    <div class="screen" id="screen-fix">
+      <div class="header" style="text-align:left;">
+        <button class="back-btn" id="fixBackBtn">
+          <svg viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+          Back
+        </button>
+      </div>
+
+      <!-- Timer -->
+      <div class="timer-wrap">
+        <div class="timer-ring-container">
+          <svg viewBox="0 0 160 160">
+            <circle class="timer-ring-bg" cx="80" cy="80" r="70"/>
+            <circle class="timer-ring-fill" id="timerCircle" cx="80" cy="80" r="70"/>
+          </svg>
+          <div class="timer-text">
+            <span class="timer-digits" id="timerDigits">5:00</span>
+            <span class="timer-label">Remaining</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Loading state for fix content -->
+      <div id="fixLoading" class="loading-wrap">
+        <div class="loading-spinner"></div>
+        <p class="loading-text">Generating your fix session...</p>
+      </div>
+
+      <!-- Fix content -->
+      <div id="fixContent" style="display:none;">
+        <div class="glass-card fix-session-card" id="fixSessionCard">
+          <!-- Step 1: Explanation -->
+          <div class="fix-step">
+            <div class="fix-step-header">
+              <span class="fix-step-num">1</span>
+              <span class="fix-step-title">Micro-Explanation</span>
+            </div>
+            <div class="fix-step-content" id="fixExplanation"></div>
+          </div>
+
+          <!-- Step 2: Example -->
+          <div class="fix-step">
+            <div class="fix-step-header">
+              <span class="fix-step-num">2</span>
+              <span class="fix-step-title">Example</span>
+            </div>
+            <div class="fix-step-content" id="fixExample"></div>
+          </div>
+
+          <!-- Step 3: Question -->
+          <div class="fix-step">
+            <div class="fix-step-header">
+              <span class="fix-step-num">3</span>
+              <span class="fix-step-title">Quick Check</span>
+            </div>
+            <div class="fix-step-content" id="fixQuestion"></div>
+            <div class="answer-input-wrap">
+              <input type="text" class="input-field" id="answerInput" placeholder="Type your answer..." />
+            </div>
+          </div>
+        </div>
+
+        <button class="btn-primary mt-12" id="checkAnswerBtn" disabled>Check Answer</button>
+      </div>
+
+      <!-- Error -->
+      <p class="error-text" id="fixError" style="display:none;"></p>
+    </div>
+
+    <!-- ═══════════════ SCREEN: RESULT ═══════════════ -->
+    <div class="screen" id="screen-result">
+      <div class="result-icon-wrap">
+        <div class="result-icon" id="resultIcon"></div>
+      </div>
+      <p class="result-text" id="resultTitle"></p>
+      <p class="result-sub" id="resultSub"></p>
+
+      <div class="glass-card text-center" id="resultFeedback" style="display:none;">
+        <p id="resultFeedbackText" style="font-size:14px; color:var(--ink-2);"></p>
+      </div>
+
+      <div id="resultActions" class="mt-16" style="display:flex; flex-direction:column; gap:10px;"></div>
+    </div>
+
+    <!-- ═══════════════ SCREEN: PROGRESS ═══════════════ -->
+    <div class="screen" id="screen-progress">
+      <div class="header">
+        <div class="header-title">Progress</div>
+        <p class="header-sub">Your learning journey</p>
+      </div>
+
+      <div class="progress-stat-row">
+        <div class="progress-stat">
+          <div class="progress-stat-value" id="progMomentum">0</div>
+          <div class="progress-stat-label">Momentum</div>
+        </div>
+        <div class="progress-stat">
+          <div class="progress-stat-value" id="progStreak">0</div>
+          <div class="progress-stat-label">Day Streak</div>
+        </div>
+        <div class="progress-stat">
+          <div class="progress-stat-value" id="progSessions">0</div>
+          <div class="progress-stat-label">Sessions</div>
+        </div>
+        <div class="progress-stat">
+          <div class="progress-stat-value" id="progToday">0</div>
+          <div class="progress-stat-label">Today</div>
+        </div>
+      </div>
+
+      <!-- Weekly chart -->
+      <div class="glass-card">
+        <p class="eyebrow">This Week</p>
+        <div class="weekly-chart" id="weeklyChart"></div>
+      </div>
+
+      <!-- Mastered -->
+      <div class="glass-card" id="masteredCard" style="display:none;">
+        <p class="eyebrow">Concepts Mastered</p>
+        <ul class="mastered-list" id="masteredList"></ul>
+      </div>
+
+      <!-- Weak areas -->
+      <div class="glass-card" id="weakCard" style="display:none;">
+        <p class="eyebrow">Weak Areas</p>
+        <ul class="weak-list" id="weakList"></ul>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Bottom Nav -->
+  <nav class="bottom-nav">
+    <button class="nav-tab active" data-screen="feed" id="navFeed">
+      <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      Feed
+    </button>
+    <button class="nav-tab" data-screen="explain" id="navLearn">
+      <svg viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
+      Learn
+    </button>
+    <button class="nav-tab" data-screen="progress" id="navProgress">
+      <svg viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+      Progress
+    </button>
+  </nav>
+
+  <script src="tide.js"></script>
+</body>
+</html>
